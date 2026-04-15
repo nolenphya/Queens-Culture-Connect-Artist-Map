@@ -661,12 +661,4 @@ document.addEventListener('click', (e) => {
   }
 });
 
-console.log(
-  "Airtable neighborhoods:",
-  [...new Set(data.map(d => d.Neighborhood))]
-);
 
-console.log(
-  "GeoJSON neighborhoods:",
-  neighborhoods.features.map(f => f.properties.neighborhood)
-);
