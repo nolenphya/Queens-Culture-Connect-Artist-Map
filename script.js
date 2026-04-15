@@ -392,20 +392,26 @@ document.getElementById('reset-legend').addEventListener('click', () => {
 // Map load
 
 
-map.on('load', () => {
-  // =======================
-  // Load Custom Icons if Any
-  // =======================
+map.on('load', async () => {
 
-  map.on('load', async () => {
-  const data = await fetchData();
+  // ✅ Fetch Airtable data
+  const records = await fetchData();
+  const data = records.map(r => ({
+    id: r.id,
+    ...r.fields
+  }));
 
-  // 👉 load neighborhoods
+  // ✅ Load neighborhoods
   const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
     .then(res => res.json());
 
+  // ⚠️ IMPORTANT: NTA uses "NTAName", not "neighborhood"
+  neighborhoods.features.forEach(f => {
+    f.properties.neighborhood = f.properties.NTAName;
+  });
+
+  // ✅ Build choropleth
   createNeighborhoodChoropleth(data, neighborhoods);
-});
 
   Object.values(iconMap).forEach(iconName => {
     map.loadImage(`icons/${iconName}.png`, (error, image) => {
@@ -415,17 +421,6 @@ map.on('load', () => {
         map.addImage(iconName, image);
       }
     });
-  });
-
-  // =======================
-  // Fetch and Add Markers
-  // =======================
-  fetchData().then(records => {
-    const data = records.map(r => ({
-      id: r.id,
-      ...r.fields
-    }));
-    createMarkers(data);
   });
 
   // =======================
