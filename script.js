@@ -54,7 +54,7 @@ function getColorFor(tag) {
 // =======================
 async function fetchData() {
   const filterFormula = encodeURIComponent("{Approved}=TRUE()");
-  const viewName = encodeURIComponent("main");
+  const viewName = encodeURIComponent("Artists");
   let allRecords = [];
   let offset = null;
 
