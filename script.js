@@ -405,6 +405,9 @@ map.on('load', async () => {
   const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
     .then(res => res.json());
 
+    // Add this line to actually run the code!
+createNeighborhoodChoropleth(data, neighborhoods);
+
   // ⚠️ IMPORTANT: NTA uses "NTAName", not "neighborhood"
   neighborhoods.features.forEach(f => {
     f.properties.neighborhood = f.properties.neighborhood || f.properties.NTAName;
