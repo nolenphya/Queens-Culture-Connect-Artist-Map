@@ -407,7 +407,7 @@ map.on('load', async () => {
 
   // ⚠️ IMPORTANT: NTA uses "NTAName", not "neighborhood"
   neighborhoods.features.forEach(f => {
-    f.properties.neighborhood = f.properties.NTAName;
+    f.properties.neighborhood = f.properties.neighborhood || f.properties.NTAName;
   });
 
   // ✅ Build choropleth
