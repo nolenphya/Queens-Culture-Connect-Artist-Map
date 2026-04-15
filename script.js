@@ -411,17 +411,96 @@ map.on('load', async () => {
   });
 
   // ✅ Build choropleth
-  createNeighborhoodChoropleth(data, neighborhoods);
+  function createNeighborhoodChoropleth(data, neighborhoods) {
+  const artistGroups = {};
 
-  Object.values(iconMap).forEach(iconName => {
-    map.loadImage(`icons/${iconName}.png`, (error, image) => {
-      if (error) {
-        console.warn(`Could not load icon "${iconName}":`, error);
-      } else if (!map.hasImage(iconName)) {
-        map.addImage(iconName, image);
-      }
-    });
+  // initialize groups
+  neighborhoods.features.forEach(f => {
+    const name = f.properties.neighborhood;
+    artistGroups[name] = [];
   });
+
+  // ✅ GROUP BY NEIGHBORHOOD (no Turf!)
+  data.forEach(row => {
+    const name = row.Neighborhood; // 👈 YOUR AIRTABLE FIELD
+
+    if (!name) return;
+
+    if (!artistGroups[name]) {
+      // handles mismatches
+      artistGroups[name] = [];
+    }
+
+    artistGroups[name].push(row);
+  });
+
+  // attach counts
+  neighborhoods.features.forEach(f => {
+    const name = f.properties.neighborhood;
+    f.properties.artistCount = artistGroups[name]?.length || 0;
+  });
+
+  // add source
+  map.addSource('neighborhoods', {
+    type: 'geojson',
+    data: neighborhoods
+  });
+
+  // choropleth layer
+  map.addLayer({
+    id: 'neighborhood-fill',
+    type: 'fill',
+    source: 'neighborhoods',
+    paint: {
+      'fill-color': [
+        'interpolate',
+        ['linear'],
+        ['get', 'artistCount'],
+        0, '#f2f0f7',
+        5, '#cbc9e2',
+        10, '#9e9ac8',
+        20, '#756bb1',
+        50, '#54278f'
+      ],
+      'fill-opacity': 0.7
+    }
+  });
+
+  // outline
+  map.addLayer({
+    id: 'neighborhood-outline',
+    type: 'line',
+    source: 'neighborhoods',
+    paint: {
+      'line-color': '#333',
+      'line-width': 1
+    }
+  });
+
+  // click popup
+  map.on('click', 'neighborhood-fill', (e) => {
+    const feature = e.features[0];
+    const name = feature.properties.neighborhood;
+    const artists = artistGroups[name] || [];
+
+    const html = `
+      <div style="max-height:300px; overflow:auto;">
+        <h3>${name}</h3>
+        <p>${artists.length} artists</p>
+        <ul>
+          ${artists.map(a => `<li>${a["Org Name"] || "Unnamed"}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+
+    new mapboxgl.Popup()
+      .setLngLat(e.lngLat)
+      .setHTML(html)
+      .addTo(map);
+  });
+
+  buildNeighborhoodSidebar(artistGroups, neighborhoods);
+}
 
   // =======================
   // Subway Lines Source + Layer
@@ -581,3 +660,13 @@ document.addEventListener('click', (e) => {
     legendPanel.classList.remove('expanded');
   }
 });
+
+console.log(
+  "Airtable neighborhoods:",
+  [...new Set(data.map(d => d.Neighborhood))]
+);
+
+console.log(
+  "GeoJSON neighborhoods:",
+  neighborhoods.features.map(f => f.properties.neighborhood)
+);
