@@ -285,70 +285,59 @@ map.on('load', async () => {
     f.properties.neighborhood = f.properties.neighborhood || f.properties.NTAName;
   });
   
+  
     // Add this line to actually run the code!
 createNeighborhoodChoropleth(data, neighborhoods);
 
-  
-
   // ✅ Build choropleth
   function createNeighborhoodChoropleth(data, neighborhoods) {
-  const artistGroups = {};
 
-  // initialize groups
-  neighborhoods.features.forEach(f => {
-    const name = f.properties.neighborhood;
-    artistGroups[name] = [];
-  });
+  // 1. Build counts
+  const countsMap = {};
 
-  // ✅ GROUP BY NEIGHBORHOOD (no Turf!)
   data.forEach(row => {
-    const name = row.Neighborhood; // 👈 YOUR AIRTABLE FIELD
-
-    if (!name) return;
-
-    if (!artistGroups[name]) {
-      // handles mismatches
-      artistGroups[name] = [];
-    }
-
-    artistGroups[name].push(row);
+    const n = row.Neighborhood;
+    if (!n) return;
+    countsMap[n] = (countsMap[n] || 0) + 1;
   });
 
-  // attach counts
+  // 2. Assign to GeoJSON
   neighborhoods.features.forEach(f => {
     const name = f.properties.neighborhood;
-    f.properties.artistCount = artistGroups[name]?.length || 0;
+    f.properties.artistCount = countsMap[name] || 0;
   });
 
-  // add source
+  // 3. Compute max
+  const counts = neighborhoods.features.map(f => f.properties.artistCount);
+  const maxCount = Math.max(...counts);
+  const safeMax = maxCount > 0 ? maxCount : 1;
+
+  // 4. Add source
   map.addSource('neighborhoods', {
     type: 'geojson',
     data: neighborhoods
   });
 
-  // choropleth layer
-const counts = neighborhoods.features.map(f => f.properties.artistCount || 0);
-const maxCount = Math.max(...counts);
-const safeMax = maxCount > 0 ? maxCount : 1;
+  // 5. Add layer (USES safeMax here)
+  map.addLayer({
+    id: 'neighborhood-fill',
+    type: 'fill',
+    source: 'neighborhoods',
+    paint: {
+      'fill-color': [
+        'interpolate',
+        ['exponential', 0.5],
+        ['get', 'artistCount'],
+        0, '#f2f0f7',
+        safeMax * 0.25, '#cbc9e2',
+        safeMax * 0.5, '#9e9ac8',
+        safeMax * 0.75, '#756bb1',
+        safeMax, '#54278f'
+      ],
+      'fill-opacity': 0.7
+    }
+  });
 
-map.addLayer({
-  id: 'neighborhood-fill',
-  type: 'fill',
-  source: 'neighborhoods',
-  paint: {
-    'fill-color': [
-      'interpolate',
-      ['exponential', 0.5],
-      ['get', 'artistCount'],
-      0, '#f2f0f7',
-      safeMax * 0.25, '#cbc9e2',
-      safeMax * 0.5, '#9e9ac8',
-      safeMax * 0.75, '#756bb1',
-      safeMax, '#54278f'
-    ],
-    'fill-opacity': 0.7
-  }
-});
 
   // outline
   map.addLayer({
@@ -360,7 +349,7 @@ map.addLayer({
       'line-width': 1
     }
   });
-
+  
   // click popup
   map.on('click', 'neighborhood-fill', (e) => {
     const feature = e.features[0];
