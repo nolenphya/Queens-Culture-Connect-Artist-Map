@@ -327,24 +327,28 @@ createNeighborhoodChoropleth(data, neighborhoods);
   });
 
   // choropleth layer
-  map.addLayer({
-    id: 'neighborhood-fill',
-    type: 'fill',
-    source: 'neighborhoods',
-    paint: {
-      'fill-color': [
-        'interpolate',
-        ['exponential', 0.5],
-        ['get', 'artistCount'],
-          0, '#f2f0f7',
-        maxCount * 0.25, '#cbc9e2',
-        maxCount * 0.5, '#9e9ac8',
-        maxCount * 0.75, '#756bb1',
-        maxCount, '#54278f'
-      ],
-      'fill-opacity': 0.7
-    }
-  });
+const counts = neighborhoods.features.map(f => f.properties.artistCount || 0);
+const maxCount = Math.max(...counts);
+const safeMax = maxCount > 0 ? maxCount : 1;
+
+map.addLayer({
+  id: 'neighborhood-fill',
+  type: 'fill',
+  source: 'neighborhoods',
+  paint: {
+    'fill-color': [
+      'interpolate',
+      ['exponential', 0.5],
+      ['get', 'artistCount'],
+      0, '#f2f0f7',
+      safeMax * 0.25, '#cbc9e2',
+      safeMax * 0.5, '#9e9ac8',
+      safeMax * 0.75, '#756bb1',
+      safeMax, '#54278f'
+    ],
+    'fill-opacity': 0.7
+  }
+});
 
   // outline
   map.addLayer({
