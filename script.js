@@ -334,13 +334,13 @@ createNeighborhoodChoropleth(data, neighborhoods);
     paint: {
       'fill-color': [
         'interpolate',
-        ['sqrt'],
+        ['exponential', 0.5],
         ['get', 'artistCount'],
-        0, '#f2f0f7',
-        5, '#cbc9e2',
-        10, '#9e9ac8',
-        20, '#756bb1',
-        50, '#54278f'
+          0, '#f2f0f7',
+        maxCount * 0.25, '#cbc9e2',
+        maxCount * 0.5, '#9e9ac8',
+        maxCount * 0.75, '#756bb1',
+        maxCount, '#54278f'
       ],
       'fill-opacity': 0.7
     }
