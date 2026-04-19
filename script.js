@@ -286,7 +286,7 @@ map.on('load', async () => {
     .then(res => res.json());
 
   neighborhoods.features.forEach(f => {
-    f.properties.neighborhood = f.properties.neighborhood || f.properties.NTAName;
+    f.properties.neighborhood = f.properties.neighborhood || f.properties.ntaname;
   });
 
   // Now pass artistGroups to your function
@@ -307,7 +307,7 @@ map.on('load', async () => {
 
   // 2. Assign to GeoJSON
   neighborhoods.features.forEach(f => {
-    const name = f.properties.neighborhood;
+    const name = f.properties.ntaname;
     f.properties.artistCount = countsMap[name] || 0;
   });
 
