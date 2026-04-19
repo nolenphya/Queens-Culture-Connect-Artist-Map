@@ -87,132 +87,6 @@ async function fetchData() {
   }
 }
 
-// Geocode missing
-async function geocodeAndSaveMissingCoords(record) {
-  if (!record.Address) return null;
-
-  const query = encodeURIComponent(record.Address);
-  const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${mapboxgl.accessToken}`;
-
-  try {
-    const res = await fetch(geocodeUrl);
-    const json = await res.json();
-    if (!json.features.length) return null;
-
-    const [lng, lat] = json.features[0].center;
-
-    await fetch(`${AIRTABLE_URL}/${record.id}`, {
-      method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ fields: { Latitude: lat, Longitude: lng } })
-    });
-
-    record.Latitude = lat;
-    record.Longitude = lng;
-    return record;
-  } catch (error) {
-    console.error('Geocoding failed:', record.Address, error);
-    return null;
-  }
-}
-
-// Create neighborhood choropleth
-function createNeighborhoodChoropleth(data, neighborhoods) {
-  const artistGroups = {};
-
-  // initialize groups
-  neighborhoods.features.forEach(f => {
-    const name = f.properties.neighborhood;
-    artistGroups[name] = [];
-  });
-
-  // assign artists → neighborhoods
-  data.forEach(row => {
-    const lat = parseFloat(row.Latitude);
-    const lng = parseFloat(row.Longitude);
-    if (isNaN(lat) || isNaN(lng)) return;
-
-    const pt = turf.point([lng, lat]);
-
-    neighborhoods.features.forEach(f => {
-      if (turf.booleanPointInPolygon(pt, f)) {
-        const name = f.properties.neighborhood;
-        artistGroups[name].push(row);
-      }
-    });
-  });
-
-  // attach counts
-  neighborhoods.features.forEach(f => {
-    const name = f.properties.neighborhood;
-    f.properties.artistCount = artistGroups[name].length;
-  });
-
-  // add source
-  map.addSource('neighborhoods', {
-    type: 'geojson',
-    data: neighborhoods
-  });
-
-  // add choropleth layer
-  map.addLayer({
-    id: 'neighborhood-fill',
-    type: 'fill',
-    source: 'neighborhoods',
-    paint: {
-      'fill-color': [
-        'interpolate',
-        ['linear'],
-        ['get', 'artistCount'],
-        0, '#f2f0f7',
-        5, '#cbc9e2',
-        10, '#9e9ac8',
-        20, '#756bb1',
-        50, '#54278f'
-      ],
-      'fill-opacity': 0.7
-    }
-  });
-
-  // outline
-  map.addLayer({
-    id: 'neighborhood-outline',
-    type: 'line',
-    source: 'neighborhoods',
-    paint: {
-      'line-color': '#333',
-      'line-width': 1
-    }
-  });
-
-  // click interaction
-  map.on('click', 'neighborhood-fill', (e) => {
-    const feature = e.features[0];
-    const name = feature.properties.neighborhood;
-    const artists = artistGroups[name];
-
-    const html = `
-      <div style="max-height:300px; overflow:auto;">
-        <h3>${name}</h3>
-        <p>${artists.length} artists</p>
-        <ul>
-          ${artists.map(a => `<li>${a["Org Name"] || "Unnamed"}</li>`).join('')}
-        </ul>
-      </div>
-    `;
-
-    new mapboxgl.Popup()
-      .setLngLat(e.lngLat)
-      .setHTML(html)
-      .addTo(map);
-  });
-
-  buildNeighborhoodSidebar(artistGroups, neighborhoods);
-}
-
 map.on('zoom', () => {
   const zoomLevel = map.getZoom();
   allMarkers.forEach(marker => {
@@ -405,13 +279,16 @@ map.on('load', async () => {
   const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
     .then(res => res.json());
 
-    // Add this line to actually run the code!
-createNeighborhoodChoropleth(data, neighborhoods);
 
-  // ⚠️ IMPORTANT: NTA uses "NTAName", not "neighborhood"
+// ⚠️ IMPORTANT: NTA uses "NTAName", not "neighborhood"
   neighborhoods.features.forEach(f => {
     f.properties.neighborhood = f.properties.neighborhood || f.properties.NTAName;
   });
+  
+    // Add this line to actually run the code!
+createNeighborhoodChoropleth(data, neighborhoods);
+
+  
 
   // ✅ Build choropleth
   function createNeighborhoodChoropleth(data, neighborhoods) {
@@ -457,7 +334,7 @@ createNeighborhoodChoropleth(data, neighborhoods);
     paint: {
       'fill-color': [
         'interpolate',
-        ['linear'],
+        ['sqrt'],
         ['get', 'artistCount'],
         0, '#f2f0f7',
         5, '#cbc9e2',
