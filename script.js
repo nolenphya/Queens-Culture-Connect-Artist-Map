@@ -267,27 +267,31 @@ document.getElementById('reset-legend').addEventListener('click', () => {
 
 
 map.on('load', async () => {
-
-  // ✅ Fetch Airtable data
   const records = await fetchData();
   const data = records.map(r => ({
     id: r.id,
     ...r.fields
   }));
 
-  // ✅ Load neighborhoods
+  // Group data by neighborhood for the popups and sidebar
+  const artistGroups = {};
+  data.forEach(row => {
+    const n = row.Neighborhood;
+    if (!n) return;
+    if (!artistGroups[n]) artistGroups[n] = [];
+    artistGroups[n].push(row);
+  });
+
   const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
     .then(res => res.json());
 
-
-// ⚠️ IMPORTANT: NTA uses "NTAName", not "neighborhood"
   neighborhoods.features.forEach(f => {
     f.properties.neighborhood = f.properties.neighborhood || f.properties.NTAName;
   });
-  
-  
-    // Add this line to actually run the code!
-createNeighborhoodChoropleth(data, neighborhoods);
+
+  // Now pass artistGroups to your function
+  createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
+;
 
   // ✅ Build choropleth
   function createNeighborhoodChoropleth(data, neighborhoods) {
@@ -372,6 +376,30 @@ createNeighborhoodChoropleth(data, neighborhoods);
       .addTo(map);
   });
 
+const legendContainer = document.getElementById('legend');
+  legendContainer.innerHTML = '<h3>Artist Density</h3>';
+
+  const layers = [
+    '0', 
+    `1 - ${Math.round(safeMax * 0.25)}`, 
+    `${Math.round(safeMax * 0.25) + 1} - ${Math.round(safeMax * 0.5)}`, 
+    `${Math.round(safeMax * 0.5) + 1} - ${Math.round(safeMax * 0.75)}`, 
+    `${Math.round(safeMax * 0.75) + 1}+`
+  ];
+  
+  const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
+
+  layers.forEach((layer, i) => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `
+      <span class="color-key" style="background-color: ${colors[i]};"></span>
+      <span>${layer}</span>
+    `;
+    legendContainer.appendChild(item);
+  });
+  
+  // Call the sidebar builder
   buildNeighborhoodSidebar(artistGroups, neighborhoods);
 }
 
