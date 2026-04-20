@@ -355,26 +355,41 @@ map.on('load', async () => {
   });
   
   // click popup
-  map.on('click', 'neighborhood-fill', (e) => {
-    const feature = e.features[0];
-    const name = feature.properties.neighborhood;
-    const artists = artistGroups[name] || [];
+ map.on('click', 'neighborhood-fill', (e) => {
+  const feature = e.features[0];
+  const name = feature.properties.neighborhood;
+  
+  // Normalize the name to match your artistGroups keys
+  const lookupName = name ? name.trim().toLowerCase() : "";
+  const artists = artistGroups[lookupName] || [];
 
-    const html = `
-      <div style="max-height:300px; overflow:auto;">
-        <h3>${name}</h3>
-        <p>${artists.length} artists</p>
-        <ul>
-          ${artists.map(a => `<li>${a["Org Name"] || "Unnamed"}</li>`).join('')}
-        </ul>
-      </div>
-    `;
+  // Replace this with your actual Softr details page URL
+  const SOFTR_DETAILS_URL = "https://elwanda52071.preview.softr.app/artist-details";
 
-    new mapboxgl.Popup()
-      .setLngLat(e.lngLat)
-      .setHTML(html)
-      .addTo(map);
-  });
+  const html = `
+    <div style="max-height:300px; overflow:auto; padding: 10px; font-family: sans-serif;">
+      <h3 style="margin-top:0;">${name}</h3>
+      <p><strong>${artists.length}</strong> artists in this area</p>
+      <ul style="list-style: none; padding: 0;">
+        ${artists.map(a => `
+          <li style="margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px;">
+            <div style="font-weight: bold;">${a["Org Name"] || "Unnamed"}</div>
+            <a href="${SOFTR_DETAILS_URL}?recordId=${a.id}" 
+               target="_blank" 
+               style="color: #007bff; text-decoration: none; font-size: 12px;">
+               View Profile →
+            </a>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  `;
+
+  new mapboxgl.Popup()
+    .setLngLat(e.lngLat)
+    .setHTML(html)
+    .addTo(map);
+});
 
 const legendContainer = document.getElementById('legend');
   legendContainer.innerHTML = '<h3>Artist Density</h3>';
