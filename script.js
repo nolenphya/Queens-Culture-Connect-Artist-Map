@@ -267,35 +267,43 @@ document.getElementById('reset-legend').addEventListener('click', () => {
 
 
 map.on('load', async () => {
-  // Now pass artistGroups to your function
-  createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
+  try {
+    // 1. Fetch Airtable Data first
+    const records = await fetchData();
+    const data = records.map(r => ({
+      id: r.id,
+      ...r.fields
+    }));
 
-  const records = await fetchData();
-  const data = records.map(r => ({
-    id: r.id,
-    ...r.fields
-  }));
+    // 2. Fetch GeoJSON second
+    const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
+      .then(res => res.json());
 
-  // Group data by neighborhood for the popups and sidebar
-const artistGroups = {};
-data.forEach(row => {
-    // If it's a Linked Record, it comes in as an array. 
-    // We take the first item in that array.
-    const n = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
-    
-    if (!n) return;
+    // 3. Process the artistGroups (Standardize the keys)
+    const artistGroups = {};
+    data.forEach(row => {
+      // Handle the Linked Record array vs string
+      const rawNta = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+      if (!rawNta) return;
+      
+      // We keep the case as-is because ntaname in your GeoJSON is usually Title Case
+      const n = rawNta.trim(); 
+      if (!artistGroups[n]) artistGroups[n] = [];
+      artistGroups[n].push(row);
+    });
 
-    if (!artistGroups[n]) artistGroups[n] = [];
-    artistGroups[n].push(row);
+    // 4. Standardize GeoJSON properties for matching
+    neighborhoods.features.forEach(f => {
+      f.properties.neighborhood = f.properties.ntaname;
+    });
+
+    // 5. NOW call the map building functions
+    createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
+
+  } catch (error) {
+    console.error("Initialization failed:", error);
+  }
 });
-
-  const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
-    .then(res => res.json());
-
-  neighborhoods.features.forEach(f => {
-    f.properties.neighborhood = f.properties.neighborhood || f.properties.ntaname;
-  });
-}
 
 
   // ✅ Build choropleth
@@ -364,13 +372,11 @@ neighborhoods.features.forEach(f => {
   // click popup
  map.on('click', 'neighborhood-fill', (e) => {
   const feature = e.features[0];
-  const name = feature.properties.neighborhood;
+  const name = feature.properties.ntaname; // Exact match to GeoJSON key
   
-  // Normalize the name to match your artistGroups keys
-  const lookupName = name ? name.trim().toLowerCase() : "";
-  const artists = artistGroups[lookupName] || [];
+  // Use the exact name key from artistGroups (no .toLowerCase() needed if data is clean)
+  const artists = artistGroups[name] || [];
 
-  // Replace this with your actual Softr details page URL
   const SOFTR_DETAILS_URL = "https://elwanda52071.softr.app/artist-details";
 
   const html = `
