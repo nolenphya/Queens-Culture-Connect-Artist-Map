@@ -267,6 +267,9 @@ document.getElementById('reset-legend').addEventListener('click', () => {
 
 
 map.on('load', async () => {
+  // Now pass artistGroups to your function
+  createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
+
   const records = await fetchData();
   const data = records.map(r => ({
     id: r.id,
@@ -288,10 +291,8 @@ map.on('load', async () => {
   neighborhoods.features.forEach(f => {
     f.properties.neighborhood = f.properties.neighborhood || f.properties.ntaname;
   });
+}
 
-  // Now pass artistGroups to your function
-  createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
-;
 
   // ✅ Build choropleth
   function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
