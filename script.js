@@ -286,7 +286,7 @@ map.on('load', async () => {
     .then(res => res.json());
 
   neighborhoods.features.forEach(f => {
-    f.properties.neighborhood = f.properties.neighborhood || f.properties.ntaname;
+    f.properties.neighborhood = f.properties.neighborhood || f.properties.LinkedNTAs;
   });
 
   // Now pass artistGroups to your function
