@@ -396,7 +396,7 @@ const legendContainer = document.getElementById('legend');
   });
   
   // Call the sidebar builder
-  buildNeighborhoodSidebar(artistGroups, neighborhoods);
+  buildNeighborhoodSidebar(artistGroups, LinkedNTAs);
 }
 
   // =======================
