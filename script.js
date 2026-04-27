@@ -500,7 +500,6 @@ const legendContainer = document.getElementById('legend');
       'text-halo-width': 1
     }
   });
-});
 
 // =======================
 // Zoom-based Label Visibility
