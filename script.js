@@ -370,39 +370,7 @@ neighborhoods.features.forEach(f => {
   });
   
   // click popup
- map.on('click', 'neighborhood-fill', (e) => {
-  const feature = e.features[0];
-  const name = feature.properties.ntaname; // Exact match to GeoJSON key
-  
-  // Use the exact name key from artistGroups (no .toLowerCase() needed if data is clean)
-  const artists = artistGroups[name] || [];
-
-  const SOFTR_DETAILS_URL = "https://elwanda52071.softr.app/artist-details";
-
-  const html = `
-    <div style="max-height:300px; overflow:auto; padding: 10px; font-family: sans-serif;">
-      <h3 style="margin-top:0;">${name}</h3>
-      <p><strong>${artists.length}</strong> artists in this area</p>
-      <ul style="list-style: none; padding: 0;">
-        ${artists.map(a => `
-          <li style="margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px;">
-            <div style="font-weight: bold;">${a["Org Name"] || "Unnamed"}</div>
-            <a href="${SOFTR_DETAILS_URL}?recordId=${a.id}" 
-               target="_blank" 
-               style="color: #007bff; text-decoration: none; font-size: 12px;">
-               View Profile →
-            </a>
-          </li>
-        `).join('')}
-      </ul>
-    </div>
-  `;
-
-  new mapboxgl.Popup()
-    .setLngLat(e.lngLat)
-    .setHTML(html)
-    .addTo(map);
-});
+ 
 
 const legendContainer = document.getElementById('legend');
   legendContainer.innerHTML = '<h3>Artist Density</h3>';
@@ -500,6 +468,7 @@ const legendContainer = document.getElementById('legend');
       'text-halo-width': 1
     }
   });
+});
 
 // =======================
 // Zoom-based Label Visibility
