@@ -277,13 +277,17 @@ map.on('load', async () => {
   }));
 
   // Group data by neighborhood for the popups and sidebar
-  const artistGroups = {};
-  data.forEach(row => {
-    const n = row.LinkedNTAs;
+const artistGroups = {};
+data.forEach(row => {
+    // If it's a Linked Record, it comes in as an array. 
+    // We take the first item in that array.
+    const n = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+    
     if (!n) return;
+
     if (!artistGroups[n]) artistGroups[n] = [];
     artistGroups[n].push(row);
-  });
+});
 
   const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
     .then(res => res.json());
@@ -307,10 +311,12 @@ map.on('load', async () => {
   });
 
   // 2. Assign to GeoJSON
-  neighborhoods.features.forEach(f => {
-    const name = f.properties.ntaname;
-    f.properties.artistCount = countsMap[name] || 0;
-  });
+ // Ensure you are counting names, not IDs!
+neighborhoods.features.forEach(f => {
+    const geoName = f.properties.ntaname;
+    // This looks for "Flushing" in the countsMap
+    f.properties.artistCount = countsMap[geoName] || 0; 
+});
 
   // 3. Compute max
   const counts = neighborhoods.features.map(f => f.properties.artistCount);
