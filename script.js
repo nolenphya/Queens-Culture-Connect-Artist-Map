@@ -276,7 +276,7 @@ map.on('load', async () => {
   // Group data by neighborhood for the popups and sidebar
   const artistGroups = {};
   data.forEach(row => {
-    const n = row.Neighborhood;
+    const n = row.LinkedNTAs;
     if (!n) return;
     if (!artistGroups[n]) artistGroups[n] = [];
     artistGroups[n].push(row);
@@ -286,7 +286,7 @@ map.on('load', async () => {
     .then(res => res.json());
 
   neighborhoods.features.forEach(f => {
-    f.properties.neighborhood = f.properties.neighborhood || f.properties.LinkedNTAs;
+    f.properties.neighborhood = f.properties.neighborhood || f.properties.ntaname;
   });
 
   // Now pass artistGroups to your function
@@ -294,13 +294,13 @@ map.on('load', async () => {
 ;
 
   // ✅ Build choropleth
-  function createNeighborhoodChoropleth(data, neighborhoods) {
+  function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
 
   // 1. Build counts
   const countsMap = {};
 
   data.forEach(row => {
-    const n = row.Neighborhood;
+    const n = row.LinkedNTAs;
     if (!n) return;
     countsMap[n] = (countsMap[n] || 0) + 1;
   });
@@ -364,7 +364,7 @@ map.on('load', async () => {
   const artists = artistGroups[lookupName] || [];
 
   // Replace this with your actual Softr details page URL
-  const SOFTR_DETAILS_URL = "https://elwanda52071.preview.softr.app/artist-details";
+  const SOFTR_DETAILS_URL = "https://elwanda52071.softr.app/artist-details";
 
   const html = `
     <div style="max-height:300px; overflow:auto; padding: 10px; font-family: sans-serif;">
