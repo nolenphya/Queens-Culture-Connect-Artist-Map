@@ -368,16 +368,19 @@ map.on('load', async () => {
 function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
 
-  data.forEach(row => {
-    // Ensure we are grabbing the Name, not the Record ID
-    const n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
-    
-    // Only count if it's a valid name string that matches your GeoJSON
-    if (n && !n.startsWith('rec')) {
-      countsMap[n] = (countsMap[n] || 0) + 1;
-    }
-  });
+// Inside map.on('load')
+data.forEach(row => {
+  // If LinkedNTAs is an array of IDs, we need the actual name.
+  // This logic assumes row.LinkedNTAs is the array you're currently getting.
+  let n = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+  
+  // If 'n' is still an ID (starts with 'rec'), 
+  // you MUST use the Lookup field method mentioned above.
+  if (!n || n.startsWith('rec')) return; 
 
+  if (!artistGroups[n]) artistGroups[n] = [];
+  artistGroups[n].push(row);
+});
   // The rest of the function remains the same
   neighborhoods.features.forEach(f => {
     const geoName = f.properties.ntaname; 
