@@ -367,29 +367,36 @@ map.on('load', async () => {
 
 function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
-  const processedRecords = new Set(); // Prevents double-counting
+  const processedRecords = new Set(); // 1. Prevents double-counting
 
   data.forEach(row => {
-    // Only process each Airtable record once
+    // Check the Set to see if we've already counted this artist
     if (processedRecords.has(row.id)) return;
 
-    // Get the name from the Linked Record array
-    const n = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+    // 2. Use the renamed Lookup field (LinkedNTA_Code)
+    // Lookup fields often return an array, so we take the first item
+    const n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
     
-    // IMPORTANT: Only count if it's a name, not a 'rec...' ID
-    if (n && !n.startsWith('rec')) {
+    if (n && typeof n === 'string' && !n.startsWith('rec')) {
       countsMap[n] = (countsMap[n] || 0) + 1;
       processedRecords.add(row.id);
     }
   });
 
-  // Assign the counts to the GeoJSON features
+  // 3. Match counts to GeoJSON for Choropleth coloring
   neighborhoods.features.forEach(f => {
     const geoName = f.properties.ntaname; 
-    // This matches "Flushing" in your countsMap to "Flushing" in the GeoJSON
     f.properties.artistCount = countsMap[geoName] || 0; 
   });
-  
+
+  // Calculate safeMax for the color scale
+  const counts = neighborhoods.features.map(f => f.properties.artistCount);
+  const safeMax = Math.max(...counts) || 1;
+
+  // Refresh the map source with the new data
+  if (map.getSource('neighborhoods')) {
+    map.getSource('neighborhoods').setData(neighborhoods);
+  }
 // Inside map.on('load')
 data.forEach(row => {
   
