@@ -415,9 +415,6 @@ data.forEach(row => {
     f.properties.artistCount = countsMap[geoName] || 0; 
   });
 
-  const counts = neighborhoods.features.map(f => f.properties.artistCount);
-  const safeMax = Math.max(...counts) || 1;
-
   map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
 
   map.addLayer({
