@@ -367,7 +367,29 @@ map.on('load', async () => {
 
 function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
+  const processedRecords = new Set(); // Prevents double-counting
 
+  data.forEach(row => {
+    // Only process each Airtable record once
+    if (processedRecords.has(row.id)) return;
+
+    // Get the name from the Linked Record array
+    const n = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+    
+    // IMPORTANT: Only count if it's a name, not a 'rec...' ID
+    if (n && !n.startsWith('rec')) {
+      countsMap[n] = (countsMap[n] || 0) + 1;
+      processedRecords.add(row.id);
+    }
+  });
+
+  // Assign the counts to the GeoJSON features
+  neighborhoods.features.forEach(f => {
+    const geoName = f.properties.ntaname; 
+    // This matches "Flushing" in your countsMap to "Flushing" in the GeoJSON
+    f.properties.artistCount = countsMap[geoName] || 0; 
+  });
+  
 // Inside map.on('load')
 data.forEach(row => {
   
@@ -416,26 +438,37 @@ data.forEach(row => {
   });
 
   // Pop-up Logic
-  map.on('click', 'neighborhood-fill', (e) => {
-    const feature = e.features[0];
-    const name = feature.properties.ntaname;
-    const artists = artistGroups[name] || [];
-    const SOFTR_URL = "https://elwanda52071.softr.app/artist-details";
+ map.on('click', 'neighborhood-fill', (e) => {
+  const feature = e.features[0];
+  const name = feature.properties.ntaname;
+  const artists = artistGroups[name] || [];
 
-    const html = `
-      <div style="padding:10px; max-height:200px; overflow-y:auto;">
-        <h3>${name}</h3>
-        <p><strong>${artists.length}</strong> Artists</p>
-        ${artists.map(a => `
-          <div style="margin-bottom:5px;">
-            <strong>${a["Org Name"] || "Unnamed"}</strong><br>
-            <a href="${SOFTR_URL}?recordId=${a.id}" target="_blank">View Profile →</a>
-          </div>
-        `).join('')}
-      </div>`;
+  // Softr Modal URL Construction
+  const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
+  const DETAIL_SLUG = "/artists-details"; 
 
-    new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-  });
+  const html = `
+    <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
+      <h3 style="margin:0 0 5px 0;">${name}</h3>
+      <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
+      <hr style="border:0; border-top:1px solid #eee;">
+      ${artists.map(a => {
+        // This creates the link that triggers the Softr Modal
+        const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
+        const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
+        
+        return `
+          <div style="margin-top:8px;">
+            <div style="font-weight:bold; font-size:14px;">${a["Org Name"] || "Unnamed"}</div>
+            <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">
+              View Profile →
+            </a>
+          </div>`;
+      }).join('')}
+    </div>`;
+
+  new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+});
 
   // Legend UI
   const legendContainer = document.getElementById('legend');
