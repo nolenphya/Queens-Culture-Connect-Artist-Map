@@ -265,88 +265,130 @@ document.getElementById('reset-legend').addEventListener('click', () => {
 
 // Map load
 
+// REPLACE everything from map.on('load') down to the Subway Layers with this:
 
 map.on('load', async () => {
   try {
-    // 1. Fetch Airtable Data first
+    // 1. Fetch Airtable Data
     const records = await fetchData();
     const data = records.map(r => ({
       id: r.id,
       ...r.fields
     }));
 
-    // 2. Fetch GeoJSON second
+    // 2. Fetch GeoJSON
     const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
       .then(res => res.json());
 
-    // 3. Process the artistGroups (Standardize the keys)
+    // 3. Process artistGroups
     const artistGroups = {};
     data.forEach(row => {
-      // Handle the Linked Record array vs string
       const rawNta = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
       if (!rawNta) return;
-      
-      // We keep the case as-is because ntaname in your GeoJSON is usually Title Case
       const n = rawNta.trim(); 
       if (!artistGroups[n]) artistGroups[n] = [];
       artistGroups[n].push(row);
     });
 
-    // 4. Standardize GeoJSON properties for matching
+    // 4. Standardize GeoJSON props
     neighborhoods.features.forEach(f => {
       f.properties.neighborhood = f.properties.ntaname;
     });
 
-    // 5. NOW call the map building functions
+    // 5. Build Choropleth
     createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
+
+    // 6. Subway Lines
+    map.addSource('subway-lines', {
+      type: 'geojson',
+      data: 'nyc-subway-routes.geojson'
+    });
+
+    map.addLayer({
+      id: 'subway-lines-layer',
+      type: 'line',
+      source: 'subway-lines',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-width': 2,
+        'line-color': [
+          'match', ['get', 'rt_symbol'],
+          '1', '#EE352E', '2', '#EE352E', '3', '#EE352E',
+          '4', '#00933C', '5', '#00933C', '6', '#00933C',
+          'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD',
+          'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319',
+          'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A',
+          'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633',
+          '7', '#B933AD', '#000000'
+        ]
+      }
+    });
+
+    // 7. Subway Stops
+    map.addSource('subway-stops', {
+      type: 'geojson',
+      data: 'nyc-subway-stops.geojson'
+    });
+
+    map.addLayer({
+      id: 'subway-stations-stops',
+      type: 'circle',
+      source: 'subway-stops',
+      paint: {
+        'circle-radius': 1,
+        'circle-color': '#ffffff',
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#000000'
+      }
+    });
+
+    map.addLayer({
+      id: 'subway-station-labels',
+      type: 'symbol',
+      source: 'subway-stops',
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 12,
+        'text-offset': [0, 1.2],
+        'text-anchor': 'top',
+        'visibility': 'none'
+      },
+      paint: {
+        'text-color': '#000000',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 1
+      }
+    });
 
   } catch (error) {
     console.error("Initialization failed:", error);
   }
-});
+}); // End map.on('load')
 
-
-  // ✅ Build choropleth
-  function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
-
-  // 1. Build counts
+function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
-
   data.forEach(row => {
-    const n = row.LinkedNTAs;
-    if (!n) return;
-    countsMap[n] = (countsMap[n] || 0) + 1;
+    const rawNta = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+    if (rawNta) countsMap[rawNta] = (countsMap[rawNta] || 0) + 1;
   });
 
-  // 2. Assign to GeoJSON
- // Ensure you are counting names, not IDs!
-neighborhoods.features.forEach(f => {
+  neighborhoods.features.forEach(f => {
     const geoName = f.properties.ntaname;
-    // This looks for "Flushing" in the countsMap
     f.properties.artistCount = countsMap[geoName] || 0; 
-});
-
-  // 3. Compute max
-  const counts = neighborhoods.features.map(f => f.properties.artistCount);
-  const maxCount = Math.max(...counts);
-  const safeMax = maxCount > 0 ? maxCount : 1;
-
-  // 4. Add source
-  map.addSource('neighborhoods', {
-    type: 'geojson',
-    data: neighborhoods
   });
 
-  // 5. Add layer (USES safeMax here)
+  const counts = neighborhoods.features.map(f => f.properties.artistCount);
+  const safeMax = Math.max(...counts) || 1;
+
+  map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
+
   map.addLayer({
     id: 'neighborhood-fill',
     type: 'fill',
     source: 'neighborhoods',
     paint: {
       'fill-color': [
-        'interpolate',
-        ['exponential', 0.5],
-        ['get', 'artistCount'],
+        'interpolate', ['exponential', 0.5], ['get', 'artistCount'],
         0, '#f2f0f7',
         safeMax * 0.25, '#cbc9e2',
         safeMax * 0.5, '#9e9ac8',
@@ -357,19 +399,14 @@ neighborhoods.features.forEach(f => {
     }
   });
 
-  
-  // outline
   map.addLayer({
     id: 'neighborhood-outline',
     type: 'line',
     source: 'neighborhoods',
-    paint: {
-      'line-color': '#333',
-      'line-width': 1
-    }
+    paint: { 'line-color': '#333', 'line-width': 1 }
   });
-  
-  // Softr Pop-up Logic
+
+  // Pop-up Logic
   map.on('click', 'neighborhood-fill', (e) => {
     const feature = e.features[0];
     const name = feature.properties.ntaname;
@@ -377,11 +414,11 @@ neighborhoods.features.forEach(f => {
     const SOFTR_URL = "https://elwanda52071.softr.app/artist-details";
 
     const html = `
-      <div style="padding:10px;">
+      <div style="padding:10px; max-height:200px; overflow-y:auto;">
         <h3>${name}</h3>
         <p><strong>${artists.length}</strong> Artists</p>
         ${artists.map(a => `
-          <div>
+          <div style="margin-bottom:5px;">
             <strong>${a["Org Name"] || "Unnamed"}</strong><br>
             <a href="${SOFTR_URL}?recordId=${a.id}" target="_blank">View Profile →</a>
           </div>
@@ -390,108 +427,21 @@ neighborhoods.features.forEach(f => {
 
     new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
   });
-  // click popup
- 
 
-const legendContainer = document.getElementById('legend');
+  // Legend UI
+  const legendContainer = document.getElementById('legend');
   legendContainer.innerHTML = '<h3>Artist Density</h3>';
-
-  const layers = [
-    '0', 
-    `1 - ${Math.round(safeMax * 0.25)}`, 
-    `${Math.round(safeMax * 0.25) + 1} - ${Math.round(safeMax * 0.5)}`, 
-    `${Math.round(safeMax * 0.5) + 1} - ${Math.round(safeMax * 0.75)}`, 
-    `${Math.round(safeMax * 0.75) + 1}+`
-  ];
-  
   const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
+  const grades = [0, Math.round(safeMax*0.25), Math.round(safeMax*0.5), Math.round(safeMax*0.75), safeMax];
 
-  layers.forEach((layer, i) => {
+  grades.forEach((grade, i) => {
     const item = document.createElement('div');
-    item.className = 'legend-item';
-    item.innerHTML = `
-      <span class="color-key" style="background-color: ${colors[i]};"></span>
-      <span>${layer}</span>
-    `;
+    item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block; margin-right:5px;"></span> ${grade}`;
     legendContainer.appendChild(item);
   });
-  
-  // Call the sidebar builder
-  buildNeighborhoodSidebar(artistGroups, LinkedNTAs);
+
+  buildNeighborhoodSidebar(artistGroups, neighborhoods); // Corrected variable name
 }
-
-  // =======================
-  // Subway Lines Source + Layer
-  // =======================
-  map.addSource('subway-lines', {
-    type: 'geojson',
-    data: 'nyc-subway-routes.geojson'
-  });
-
-  map.addLayer({
-    id: 'subway-lines-layer',
-    type: 'line',
-    source: 'subway-lines',
-    layout: { 'line-join': 'round', 'line-cap': 'round' },
-    paint: {
-      'line-width': 2,
-      'line-color': [
-        'match',
-        ['get', 'rt_symbol'],
-        '1', '#EE352E', '2', '#EE352E', '3', '#EE352E',
-        '4', '#00933C', '5', '#00933C', '6', '#00933C',
-        'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD',
-        'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319',
-        'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A',
-        'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633',
-        '7', '#B933AD',
-        '#000000'
-      ]
-    }
-  });
-
-  // =======================
-  // Subway Stops Source + Layers
-  // =======================
-  map.addSource('subway-stops', {
-    type: 'geojson',
-    data: 'nyc-subway-stops.geojson'
-  });
-
-  // Stop Circles
-  map.addLayer({
-    id: 'subway-stations-stops',
-    type: 'circle',
-    source: 'subway-stops',
-    paint: {
-      'circle-radius': 1,
-      'circle-color': '#ffffff',
-      'circle-stroke-width': 1,
-      'circle-stroke-color': '#000000'
-    }
-  });
-
-  // Station Labels (Initially Hidden)
-  map.addLayer({
-    id: 'subway-station-labels',
-    type: 'symbol',
-    source: 'subway-stops',
-    layout: {
-      'text-field': ['get', 'name'],
-      'text-size': 12,
-      'text-offset': [0, 1.2],
-      'text-anchor': 'top',
-      'visibility': 'none'
-    },
-    paint: {
-      'text-color': '#000000',
-      'text-halo-color': '#ffffff',
-      'text-halo-width': 1
-=
-} catch (error) {
-    console.error("Initialization failed:", error);
-  }
-});
 
 // =======================
 // Zoom-based Label Visibility
