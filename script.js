@@ -283,7 +283,7 @@ map.on('load', async () => {
     // 3. Process artistGroups
     const artistGroups = {};
     data.forEach(row => {
-      const rawNta = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+      const rawNta = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
       if (!rawNta) return;
       const n = rawNta.trim(); 
       if (!artistGroups[n]) artistGroups[n] = [];
@@ -367,13 +367,20 @@ map.on('load', async () => {
 
 function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
+
   data.forEach(row => {
-    const rawNta = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
-    if (rawNta) countsMap[rawNta] = (countsMap[rawNta] || 0) + 1;
+    // Ensure we are grabbing the Name, not the Record ID
+    const n = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+    
+    // Only count if it's a valid name string that matches your GeoJSON
+    if (n && !n.startsWith('rec')) {
+      countsMap[n] = (countsMap[n] || 0) + 1;
+    }
   });
 
+  // The rest of the function remains the same
   neighborhoods.features.forEach(f => {
-    const geoName = f.properties.ntaname;
+    const geoName = f.properties.ntaname; 
     f.properties.artistCount = countsMap[geoName] || 0; 
   });
 
