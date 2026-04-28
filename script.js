@@ -357,7 +357,7 @@ neighborhoods.features.forEach(f => {
     }
   });
 
-
+  
   // outline
   map.addLayer({
     id: 'neighborhood-outline',
@@ -369,6 +369,27 @@ neighborhoods.features.forEach(f => {
     }
   });
   
+  // Softr Pop-up Logic
+  map.on('click', 'neighborhood-fill', (e) => {
+    const feature = e.features[0];
+    const name = feature.properties.ntaname;
+    const artists = artistGroups[name] || [];
+    const SOFTR_URL = "https://elwanda52071.softr.app/artist-details";
+
+    const html = `
+      <div style="padding:10px;">
+        <h3>${name}</h3>
+        <p><strong>${artists.length}</strong> Artists</p>
+        ${artists.map(a => `
+          <div>
+            <strong>${a["Org Name"] || "Unnamed"}</strong><br>
+            <a href="${SOFTR_URL}?recordId=${a.id}" target="_blank">View Profile →</a>
+          </div>
+        `).join('')}
+      </div>`;
+
+    new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+  });
   // click popup
  
 
@@ -466,8 +487,10 @@ const legendContainer = document.getElementById('legend');
       'text-color': '#000000',
       'text-halo-color': '#ffffff',
       'text-halo-width': 1
-    }
-  });
+=
+} catch (error) {
+    console.error("Initialization failed:", error);
+  }
 });
 
 // =======================
