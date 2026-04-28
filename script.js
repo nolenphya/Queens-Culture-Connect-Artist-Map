@@ -370,8 +370,7 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
 
 // Inside map.on('load')
 data.forEach(row => {
-  // If LinkedNTA_Code is an array of IDs, we need the actual name.
-  // This logic assumes row.LinkedNTA_Code is the array you're currently getting.
+  
   let n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
   
   // If 'n' is still an ID (starts with 'rec'), 
