@@ -370,7 +370,7 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
 
   data.forEach(row => {
     // Ensure we are grabbing the Name, not the Record ID
-    const n = Array.isArray(row.LinkedNTAs) ? row.LinkedNTAs[0] : row.LinkedNTAs;
+    const n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
     
     // Only count if it's a valid name string that matches your GeoJSON
     if (n && !n.startsWith('rec')) {
