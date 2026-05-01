@@ -1,13 +1,11 @@
 // Mapbox Setup
-
 mapboxgl.accessToken = 'pk.eyJ1IjoiZmx1c2hpbmd0b3duaGFsbCIsImEiOiJjbWRmZHFxb2EwY2p3MmlxM3JoMmJwNDVrIn0.KDnT79yQuUeYVaqcKlmQGQ';
 const map = new mapboxgl.Map({
   container: 'map',
- style: 'mapbox://styles/mapbox/light-v11',
+  style: 'mapbox://styles/mapbox/light-v11',
   center: [-73.94, 40.73],
   zoom: 11
 });
-
 
 // Airtable Setup
 const AIRTABLE_API_KEY = 'patboskAQTJUi9FlQ.1c30c3c632cd4d7bd03cf949e50edd922425aba8dcbf0c8a6002e98db67c74a3';
@@ -15,43 +13,11 @@ const BASE_ID = 'apppBx0a9hj0Z1ciw';
 const TABLE_NAME = 'tbl9OiPT8QI8ss20e';
 const AIRTABLE_URL = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`;
 
-// Icon mapping for tags
-const iconMap = {
-  'Community Garden': 'community-garden',
-  'Gallery': 'gallery',
-  'Museum/Cultural Institution': 'museum',
-  'Music Group/Vocal Ensembles': 'music-group-vocal-ensemble',
-  'Dance Company': 'dance-studio',
-  'Multidisciplinary Arts Center': 'multidisciplinary-arts-center',
-  'Community Center': 'community-center',
-  'Theatre': 'theatre',
-  'Video-Film Company': 'video-film-company',
-  'Art Center-Studio': 'art-center-studio',
-  'Cultural Arts Center': 'cultural-arts-center',
-  'Historical Society-Preservation Group': 'archive'
-};
-
 // Globals
 let allMarkers = [];
-const colorMap = {};
-const colorPalette = [
-  '#e6194b', '#3cb44b', '#ffe119', '#4363d8',
-  '#f58231', '#911eb4', '#46f0f0', '#f032e6',
-  '#bcf60c', '#fabebe', '#008080', '#e6beff'
-];
+const artistGroups = {}; // Used for popups and sidebar
 
-function getColorFor(tag) {
-  if (!colorMap[tag]) {
-    const index = Object.keys(colorMap).length % colorPalette.length;
-    colorMap[tag] = colorPalette[index];
-  }
-  return colorMap[tag];
-}
-
-// Fetch data
-// =======================
-// Data Fetching (with Pagination)
-// =======================
+// Fetch data with Pagination
 async function fetchData() {
   const filterFormula = encodeURIComponent("{Approved}=TRUE()");
   const viewName = encodeURIComponent("Artists");
@@ -76,318 +42,71 @@ async function fetchData() {
 
       const data = await res.json();
       allRecords = allRecords.concat(data.records || []);
-      offset = data.offset || null; // Airtable gives a new offset if more pages exist
+      offset = data.offset || null;
     } while (offset);
 
     return allRecords;
-
   } catch (err) {
     console.error("Fetch failed:", err);
     return allRecords;
   }
 }
 
-map.on('zoom', () => {
-  const zoomLevel = map.getZoom();
-  allMarkers.forEach(marker => {
-    if (marker.labelElement) {
-      marker.labelElement.style.display = zoomLevel >= 14 ? 'block' : 'none';
-    }
-  });
-});
-
-
-document.getElementById('search-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    const query = e.target.value.trim().toLowerCase();
-    const resultsContainer = document.getElementById('search-results');
-    resultsContainer.innerHTML = ''; // Clear old results
-
-    if (!query) return;
-
-    const matches = allMarkers.filter(marker => {
-      const name = (marker.rowData["Org Name"] || "").toLowerCase();
-      const tags = (marker.rowData.Tags || "").toLowerCase();
-      return name.includes(query) || tags.includes(query);
-    });
-
-    if (matches.length === 0) {
-      resultsContainer.innerHTML = '<p>No matches found.</p>';
-      return;
-    }
-
-    // Optional: Zoom to first match
-    const first = matches[0];
-    map.flyTo({ center: first.getLngLat(), zoom: 14, essential: true });
-    first.togglePopup();
-
-    // Show results
-    const list = document.createElement('ul');
-    list.style.padding = '0';
-    list.style.listStyle = 'none';
-
-    matches.forEach(marker => {
-      const li = document.createElement('li');
-      li.style.marginBottom = '6px';
-
-      const link = document.createElement('a');
-      link.href = '#';
-      link.textContent = marker.rowData["Org Name"] || "Unnamed";
-      link.style.textDecoration = 'underline';
-      link.style.color = '#007bff';
-      link.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        map.flyTo({ center: marker.getLngLat(), zoom: 15, essential: true });
-        marker.togglePopup();
-      });
-
-      li.appendChild(link);
-      list.appendChild(li);
-    });
-
-    resultsContainer.appendChild(list);
-  }
-});
-
-document.getElementById('search-input').addEventListener('input', (e) => {
-  const query = e.target.value.trim().toLowerCase();
-  const resultsContainer = document.getElementById('search-results');
-  resultsContainer.innerHTML = ''; // Clear previous results
-
-  if (!query) return;
-
-  const matches = allMarkers.filter(marker => {
-    const name = (marker.rowData["Org Name"] || "").toLowerCase();
-    const tags = (marker.rowData.Tags || "").toLowerCase();
-    return name.includes(query) || tags.includes(query);
-  });
-
-  if (matches.length === 0) {
-    resultsContainer.innerHTML = '<p>No matches found.</p>';
-    return;
-  }
-
-  const list = document.createElement('ul');
-  list.style.padding = '0';
-  list.style.listStyle = 'none';
-
-  matches.forEach(marker => {
-    const li = document.createElement('li');
-    li.style.marginBottom = '6px';
-
-    const link = document.createElement('a');
-    link.href = '#';
-    link.textContent = marker.rowData["Org Name"] || "Unnamed";
-    link.style.textDecoration = 'underline';
-    link.style.color = '#007bff';
-
-    link.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      map.flyTo({ center: marker.getLngLat(), zoom: 15, essential: true });
-      marker.togglePopup();
-    });
-
-    li.appendChild(link);
-    list.appendChild(li);
-  });
-
-  resultsContainer.appendChild(list);
-});
-
-
-
-document.getElementById('search-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    const query = e.target.value.trim().toLowerCase();
-    if (!query) return;
-
-    const match = allMarkers.find(marker => {
-      const name = (marker.rowData["Org Name"] || "").toLowerCase();
-      const tags = (marker.rowData.Tags || "").toLowerCase();
-      return name.includes(query) || tags.includes(query);
-    });
-
-    if (match) {
-      map.flyTo({ center: match.getLngLat(), zoom: 15, essential: true });
-      match.togglePopup(); // ensure popup is toggled open
-    } else {
-      alert("No matching organization or tag found.");
-    }
-  }
-});
-
-
-function buildNeighborhoodSidebar(groups, neighborhoods) {
-  const container = document.getElementById('legend'); // reuse your legend div
-  container.innerHTML = '<h3>Neighborhoods</h3>';
-
-  Object.keys(groups).forEach(name => {
-    const count = groups[name].length;
-
-    const div = document.createElement('div');
-    div.style.cursor = 'pointer';
-    div.style.marginBottom = '6px';
-
-    div.innerHTML = `<strong>${name}</strong> (${count})`;
-
-    div.onclick = () => {
-      const feature = neighborhoods.features.find(
-        f => f.properties.neighborhood === name
-      );
-
-      const bbox = turf.bbox(feature);
-      map.fitBounds(bbox, { padding: 20 });
-
-      const center = turf.center(feature).geometry.coordinates;
-
-      map.fire('click', {
-        lngLat: { lng: center[0], lat: center[1] },
-        features: [feature]
-      });
-    };
-
-    container.appendChild(div);
-  });
-}
-
-document.getElementById('reset-legend').addEventListener('click', () => {
-  // Check all checkboxes
-  document.querySelectorAll('.legend-org-list input[type="checkbox"]').forEach(checkbox => {
-    checkbox.checked = true;
-  });
-
-  // Show all markers
-  allMarkers.forEach(marker => {
-    marker.getElement().style.display = 'block';
-  });
-});
-
-
-// Map load
-
-// REPLACE everything from map.on('load') down to the Subway Layers with this:
-
+// Map Load Logic
 map.on('load', async () => {
   try {
-    // 1. Fetch Airtable Data
+    // 1. Fetch Data
     const records = await fetchData();
-    const data = records.map(r => ({
-      id: r.id,
-      ...r.fields
-    }));
+    const data = records.map(r => ({ id: r.id, ...r.fields }));
 
     // 2. Fetch GeoJSON
     const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
       .then(res => res.json());
 
-    // 3. Process artistGroups
-    const artistGroups = {};
-    data.forEach(row => {
-      const rawNta = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
-      if (!rawNta) return;
-      const n = rawNta.trim(); 
-      if (!artistGroups[n]) artistGroups[n] = [];
-      artistGroups[n].push(row);
-    });
-
-    // 4. Standardize GeoJSON props
+    // 3. Standardize GeoJSON props
     neighborhoods.features.forEach(f => {
       f.properties.neighborhood = f.properties.ntaname;
     });
 
-    // 5. Build Choropleth
-    createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
-
-    // 6. Subway Lines
-    map.addSource('subway-lines', {
-      type: 'geojson',
-      data: 'nyc-subway-routes.geojson'
-    });
-
+    // 4. Build Layers (Subway first so neighborhoods go under them)
+    map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
     map.addLayer({
       id: 'subway-lines-layer',
       type: 'line',
       source: 'subway-lines',
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
         'line-width': 2,
-        'line-color': [
-          'match', ['get', 'rt_symbol'],
-          '1', '#EE352E', '2', '#EE352E', '3', '#EE352E',
-          '4', '#00933C', '5', '#00933C', '6', '#00933C',
-          'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD',
-          'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319',
-          'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A',
-          'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633',
-          '7', '#B933AD', '#000000'
-        ]
+        'line-color': ['match', ['get', 'rt_symbol'], '1', '#EE352E', '2', '#EE352E', '3', '#EE352E', '4', '#00933C', '5', '#00933C', '6', '#00933C', 'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD', 'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319', 'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A', 'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633', '7', '#B933AD', '#000000']
       }
     });
 
-    // 7. Subway Stops
-    map.addSource('subway-stops', {
-      type: 'geojson',
-      data: 'nyc-subway-stops.geojson'
-    });
-
-    map.addLayer({
-      id: 'subway-stations-stops',
-      type: 'circle',
-      source: 'subway-stops',
-      paint: {
-        'circle-radius': 1,
-        'circle-color': '#ffffff',
-        'circle-stroke-width': 1,
-        'circle-stroke-color': '#000000'
-      }
-    });
-
-    map.addLayer({
-      id: 'subway-station-labels',
-      type: 'symbol',
-      source: 'subway-stops',
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-size': 12,
-        'text-offset': [0, 1.2],
-        'text-anchor': 'top',
-        'visibility': 'none'
-      },
-      paint: {
-        'text-color': '#000000',
-        'text-halo-color': '#ffffff',
-        'text-halo-width': 1
-      }
-    });
+    // 5. Build Choropleth & Process Data
+    createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
 
   } catch (error) {
     console.error("Initialization failed:", error);
   }
-}); // End map.on('load')
+});
 
 function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
-  const seenIds = new Set(); 
+  const seenIds = new Set(); // Prevents double-counting
 
-  // Clear existing artistGroups to ensure no ghost data remains
+  // Clear global to ensure fresh start
   for (let key in artistGroups) delete artistGroups[key];
 
   data.forEach(row => {
-    // Prevent double-counting the same record due to pagination
     if (seenIds.has(row.id)) return;
     seenIds.add(row.id);
 
-    // Get the neighborhood(s). Handle both single strings and arrays
+    // Multi-neighborhood logic
     let ntas = row.LinkedNTA_Code;
     if (!ntas) return;
     if (!Array.isArray(ntas)) ntas = [ntas];
 
     ntas.forEach(n => {
-      // Ensure we have a valid name and not a raw Airtable ID[cite: 2]
       if (n && typeof n === 'string' && !n.startsWith('rec')) {
         const neighborhoodName = n.trim();
-        
-        // Update the Count Map for coloring and the Artist Groups for popups[cite: 2]
         countsMap[neighborhoodName] = (countsMap[neighborhoodName] || 0) + 1;
         
         if (!artistGroups[neighborhoodName]) artistGroups[neighborhoodName] = [];
@@ -396,29 +115,27 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
     });
   });
 
-  // Match counts to GeoJSON properties[cite: 2]
   neighborhoods.features.forEach(f => {
-    const geoName = f.properties.ntaname; 
-    f.properties.artistCount = countsMap[geoName] || 0; 
+    const geoName = f.properties.ntaname;
+    f.properties.artistCount = countsMap[geoName] || 0;
   });
 
   const counts = neighborhoods.features.map(f => f.properties.artistCount);
   const safeMax = Math.max(...counts) || 1;
 
-  // --- SOURCE & LAYER MANAGEMENT ---
-  // Ensure the source exists BEFORE adding layers[cite: 2]
+  // Manage Map Source
   if (map.getSource('neighborhoods')) {
     map.getSource('neighborhoods').setData(neighborhoods);
   } else {
     map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
   }
 
-  // Only add the layers if they don't already exist[cite: 2]
+  // Manage Map Layers
   if (!map.getLayer('neighborhood-fill')) {
     map.addLayer({
       id: 'neighborhood-fill',
       type: 'fill',
-      source: 'neighborhoods', // Source is now guaranteed to exist[cite: 2]
+      source: 'neighborhoods',
       paint: {
         'fill-color': [
           'interpolate', ['exponential', 0.5], ['get', 'artistCount'],
@@ -430,7 +147,7 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
         ],
         'fill-opacity': 0.7
       }
-    }, 'subway-lines-layer'); // Optional: Add below subway lines[cite: 2]
+    }, 'subway-lines-layer'); // Place below subways
 
     map.addLayer({
       id: 'neighborhood-outline',
@@ -440,57 +157,42 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
     }, 'subway-lines-layer');
   }
 
-  // --- LEGEND & SIDEBAR ---
-  const legendContainer = document.getElementById('legend');
-  legendContainer.innerHTML = '<h3>Artist Density</h3>';
-  const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
-  const grades = [0, Math.round(safeMax*0.25), Math.round(safeMax*0.5), Math.round(safeMax*0.75), safeMax];
+  // Pop-up Logic
+  map.off('click', 'neighborhood-fill');
+  map.on('click', 'neighborhood-fill', (e) => {
+    const feature = e.features[0];
+    const name = feature.properties.ntaname;
+    const artists = artistGroups[name] || [];
 
-  grades.forEach((grade, i) => {
-    const item = document.createElement('div');
-    item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block; margin-right:5px;"></span> ${grade}`;
-    legendContainer.appendChild(item);
+    const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
+    const DETAIL_SLUG = "/artists-details";
+
+    const html = `
+      <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
+        <h3 style="margin:0 0 5px 0;">${name}</h3>
+        <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
+        <hr style="border:0; border-top:1px solid #eee;">
+        ${artists.map(a => {
+          // Fix Unnamed Issue[cite: 2]
+          const displayName = a["Name"] || a["Org Name"] || a["Artist Name"] || "Unnamed Artist";
+          const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
+          const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
+          return `
+            <div style="margin-top:8px;">
+              <div style="font-weight:bold; font-size:14px;">${displayName}</div>
+              <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
+            </div>`;
+        }).join('')}
+      </div>`;
+    new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
   });
 
+  // Update Legend and Sidebar
+  updateLegendUI(safeMax);
   buildNeighborhoodSidebar(artistGroups, neighborhoods);
 }
 
-  // 3. Match counts to GeoJSON properties for the Choropleth[cite: 2]
-  neighborhoods.features.forEach(f => {
-    const geoName = f.properties.ntaname; 
-    f.properties.artistCount = countsMap[geoName] || 0; 
-  });
-
-  // Calculate the color scale based on the new multi-selection totals[cite: 2]
-  const counts = neighborhoods.features.map(f => f.properties.artistCount);
-  const safeMax = Math.max(...counts) || 1;
-
-  // Refresh the map source data[cite: 2]
-  if (map.getSource('neighborhoods')) {
-    map.getSource('neighborhoods').setData(neighborhoods);
-  }
-
-  // Update Map Layers if they don't exist[cite: 2]
-  if (!map.getLayer('neighborhood-fill')) {
-    map.addLayer({
-      id: 'neighborhood-fill',
-      type: 'fill',
-      source: 'neighborhoods',
-      paint: {
-        'fill-color': [
-          'interpolate', ['exponential', 0.5], ['get', 'artistCount'],
-          0, '#f2f0f7',
-          safeMax * 0.25, '#cbc9e2',
-          safeMax * 0.5, '#9e9ac8',
-          safeMax * 0.75, '#756bb1',
-          safeMax, '#54278f'
-        ],
-        'fill-opacity': 0.7
-      }
-    });
-  }
-
-  // Re-generate the Legend UI based on safeMax[cite: 2]
+function updateLegendUI(safeMax) {
   const legendContainer = document.getElementById('legend');
   legendContainer.innerHTML = '<h3>Artist Density</h3>';
   const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
@@ -501,78 +203,59 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
     item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block; margin-right:5px;"></span> ${grade}`;
     legendContainer.appendChild(item);
   });
+}
 
-  // Rebuild the sidebar using the updated artistGroups[cite: 2]
-  buildNeighborhoodSidebar(artistGroups, neighborhoods);
+function buildNeighborhoodSidebar(groups, neighborhoods) {
+  const container = document.getElementById('legend'); // Appends to density legend
+  const header = document.createElement('h3');
+  header.innerText = "Neighborhoods";
+  container.appendChild(header);
 
+  Object.keys(groups).sort().forEach(name => {
+    const count = groups[name].length;
+    const div = document.createElement('div');
+    div.style.cursor = 'pointer';
+    div.style.marginBottom = '6px';
+    div.innerHTML = `<strong>${name}</strong> (${count})`;
 
+    div.onclick = () => {
+      const feature = neighborhoods.features.find(f => f.properties.neighborhood === name);
+      if (feature) {
+        const bbox = turf.bbox(feature);
+        map.fitBounds(bbox, { padding: 40 });
+      }
+    };
+    container.appendChild(div);
+  });
+}
 
+// Search Logic
+document.getElementById('search-input').addEventListener('input', (e) => {
+  const query = e.target.value.trim().toLowerCase();
+  const resultsContainer = document.getElementById('search-results');
+  resultsContainer.innerHTML = '';
 
-// UI toggle logic
-map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
+  if (!query) return;
 
-// Hide by default
-document.getElementById('map-guide-overlay').style.display = 'none';
+  const matches = [];
+  Object.values(artistGroups).flat().forEach(artist => {
+    const name = (artist["Name"] || artist["Org Name"] || "").toLowerCase();
+    if (name.includes(query) && !matches.some(m => m.id === artist.id)) {
+      matches.push(artist);
+    }
+  });
 
-// When intro is closed, show the info box
-document.getElementById('close-intro').addEventListener('click', () => {
-  document.getElementById('intro-overlay').style.display = 'none';
-  document.getElementById('map-guide-overlay').style.display = 'flex';
+  matches.forEach(artist => {
+    const li = document.createElement('div');
+    li.style.padding = '5px';
+    li.style.cursor = 'pointer';
+    li.style.borderBottom = '1px solid #eee';
+    li.innerText = artist["Name"] || artist["Org Name"] || "Unnamed";
+    li.onclick = () => {
+        // Find first neighborhood this artist is in to zoom
+        const hood = Array.isArray(artist.LinkedNTA_Code) ? artist.LinkedNTA_Code[0] : artist.LinkedNTA_Code;
+        alert(`This artist is located in ${hood}. Click the neighborhood on the map to see details.`);
+    };
+    resultsContainer.appendChild(li);
+  });
 });
-
-
-const intro = document.getElementById('intro-overlay');
-intro.addEventListener('touchmove', (e) => {
-  if (intro.scrollTop > 100) {
-    intro.style.display = 'none';
-  }
-});
-
-
-
-document.addEventListener('DOMContentLoaded', () => {
-  const legendPanel = document.getElementById('legend-panel');
-const legendToggle = document.getElementById('legend-toggle');
-
-legendToggle.addEventListener('click', () => {
-  legendPanel.classList.toggle('collapsed');
-  legendToggle.textContent = legendPanel.classList.contains('collapsed') ? 'Show' : 'Hide';
-});
-})
-
-document.addEventListener('DOMContentLoaded', () => {
-  const mapGuideOverlay = document.getElementById('map-guide-overlay');
-  const mapGuideClose = document.getElementById('map-guide-close');
-  const infoButton = document.getElementById('info-button');
-
-  // Open
-  if (infoButton) {
-    infoButton.addEventListener('click', () => {
-      mapGuideOverlay.style.display = 'flex';
-    });
-  }
-
-  // Close
-  if (mapGuideClose) {
-    mapGuideClose.addEventListener('click', () => {
-      mapGuideOverlay.style.display = 'none';
-    });
-  }
-});
-
-
-const legendPanel = document.getElementById('legend-panel');
-const legendHeader = legendPanel.querySelector('.legend-header');
-
-legendHeader.addEventListener('click', () => {
-  legendPanel.classList.toggle('expanded');
-});
-
-document.addEventListener('click', (e) => {
-  const legendPanel = document.getElementById('legend-panel');
-  if (legendPanel.classList.contains('expanded') && !legendPanel.contains(e.target)) {
-    legendPanel.classList.remove('expanded');
-  }
-});
-
-
