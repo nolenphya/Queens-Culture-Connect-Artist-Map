@@ -297,7 +297,7 @@ map.on('load', async () => {
 
     // 5. Build Choropleth
 
-  function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
+    function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
   const seenIds = new Set(); // Track unique Record IDs
 
@@ -330,8 +330,12 @@ map.on('load', async () => {
     const geoName = f.properties.ntaname; 
     f.properties.artistCount = countsMap[geoName] || 0; 
   });
+
+  // ... rest of your map.addSource and map.addLayer code ...
 }
     
+    createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
+
     // 6. Subway Lines
     map.addSource('subway-lines', {
       type: 'geojson',
@@ -398,6 +402,24 @@ map.on('load', async () => {
     console.error("Initialization failed:", error);
   }
 }); // End map.on('load')
+
+function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
+  const countsMap = {};
+  const processedRecords = new Set(); // 1. Prevents double-counting
+
+  data.forEach(row => {
+    // Check the Set to see if we've already counted this artist
+    if (processedRecords.has(row.id)) return;
+
+    // 2. Use the renamed Lookup field (LinkedNTA_Code)
+    // Lookup fields often return an array, so we take the first item
+    const n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
+    
+    if (n && typeof n === 'string' && !n.startsWith('rec')) {
+      countsMap[n] = (countsMap[n] || 0) + 1;
+      processedRecords.add(row.id);
+    }
+  });
 
   // 3. Match counts to GeoJSON for Choropleth coloring
   neighborhoods.features.forEach(f => {
@@ -503,7 +525,7 @@ data.forEach(row => {
   });
 
   buildNeighborhoodSidebar(artistGroups, neighborhoods); // Corrected variable name
-
+}
 
 // =======================
 // Zoom-based Label Visibility
