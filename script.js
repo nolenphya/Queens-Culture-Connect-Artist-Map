@@ -367,50 +367,54 @@ map.on('load', async () => {
 
 function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
-  const seenIds = new Set(); // 1. Prevents double-counting by tracking unique Record IDs
+  const seenIds = new Set(); 
 
   // Clear existing artistGroups to ensure no ghost data remains
   for (let key in artistGroups) delete artistGroups[key];
 
   data.forEach(row => {
-    // 2. skip if we've already counted this specific record
+    // We still use seenIds to prevent counting the SAME record twice 
+    // due to Airtable pagination glitches
     if (seenIds.has(row.id)) return;
     seenIds.add(row.id);
 
-    // Use the LinkedNTA_Code lookup field
-    let n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
-    
-    // Ensure we have a valid name and not a raw Airtable ID (recXXX)[cite: 2]
-    if (n && typeof n === 'string' && !n.startsWith('rec')) {
-      const neighborhoodName = n.trim();
-      
-      // Update the Count Map for coloring the map[cite: 2]
-      countsMap[neighborhoodName] = (countsMap[neighborhoodName] || 0) + 1;
-      
-      // Add to the Artist Groups for the popup list[cite: 2]
-      if (!artistGroups[neighborhoodName]) artistGroups[neighborhoodName] = [];
-      artistGroups[neighborhoodName].push(row);
-    }
+    // FIX: Get the neighborhood(s). Ensure it's treated as an array.
+    let ntas = row.LinkedNTA_Code;
+    if (!ntas) return;
+    if (!Array.isArray(ntas)) ntas = [ntas]; // Force into array if it's a single string
+
+    // Loop through EVERY neighborhood selected by this artist
+    ntas.forEach(n => {
+      // Ensure we have a valid name and not a raw Airtable ID (recXXX)[cite: 2]
+      if (n && typeof n === 'string' && !n.startsWith('rec')) {
+        const neighborhoodName = n.trim();
+        
+        // 1. Update the Count Map (used for the Map Colors/Legend)[cite: 2]
+        countsMap[neighborhoodName] = (countsMap[neighborhoodName] || 0) + 1;
+        
+        // 2. Add to the Artist Groups (used for the Popups/Sidebar)[cite: 2]
+        if (!artistGroups[neighborhoodName]) artistGroups[neighborhoodName] = [];
+        artistGroups[neighborhoodName].push(row);
+      }
+    });
   });
 
-  // 3. Match counts to GeoJSON properties[cite: 2]
+  // 3. Match counts to GeoJSON properties for the Choropleth[cite: 2]
   neighborhoods.features.forEach(f => {
     const geoName = f.properties.ntaname; 
     f.properties.artistCount = countsMap[geoName] || 0; 
   });
 
-  // Calculate the color scale based on actual counts[cite: 2]
+  // Calculate the color scale based on the new multi-selection totals[cite: 2]
   const counts = neighborhoods.features.map(f => f.properties.artistCount);
   const safeMax = Math.max(...counts) || 1;
 
-  // Refresh the map source data
+  // Refresh the map source data[cite: 2]
   if (map.getSource('neighborhoods')) {
     map.getSource('neighborhoods').setData(neighborhoods);
-  } else {
-    map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
   }
 
-  // Define the map layers (Fill and Outline)[cite: 2]
+  // Update Map Layers if they don't exist[cite: 2]
   if (!map.getLayer('neighborhood-fill')) {
     map.addLayer({
       id: 'neighborhood-fill',
@@ -428,50 +432,21 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
         'fill-opacity': 0.7
       }
     });
-
-    map.addLayer({
-      id: 'neighborhood-outline',
-      type: 'line',
-      source: 'neighborhoods',
-      paint: { 'line-color': '#333', 'line-width': 1 }
-    });
   }
 
-  // 4. Corrected Pop-up Logic with Name fallback[cite: 2]
-  map.off('click', 'neighborhood-fill'); // Remove old listeners to prevent duplicates
-  map.on('click', 'neighborhood-fill', (e) => {
-    const feature = e.features[0];
-    const name = feature.properties.ntaname;
-    const artists = artistGroups[name] || [];
+  // Re-generate the Legend UI based on safeMax[cite: 2]
+  const legendContainer = document.getElementById('legend');
+  legendContainer.innerHTML = '<h3>Artist Density</h3>';
+  const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
+  const grades = [0, Math.round(safeMax*0.25), Math.round(safeMax*0.5), Math.round(safeMax*0.75), safeMax];
 
-    const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
-    const DETAIL_SLUG = "/artists-details"; 
-
-    const html = `
-      <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
-        <h3 style="margin:0 0 5px 0;">${name}</h3>
-        <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
-        <hr style="border:0; border-top:1px solid #eee;">
-        ${artists.map(a => {
-          // FIX: Check multiple name fields to avoid "Unnamed"[cite: 2]
-          const displayName = a["Name"] || a["Org Name"] || a["Organization Name"] || "Unnamed Artist";
-          const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
-          const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
-          
-          return `
-            <div style="margin-top:8px;">
-              <div style="font-weight:bold; font-size:14px;">${displayName}</div>
-              <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">
-                View Profile →
-              </a>
-            </div>`;
-        }).join('')}
-      </div>`;
-
-    new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+  grades.forEach((grade, i) => {
+    const item = document.createElement('div');
+    item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block; margin-right:5px;"></span> ${grade}`;
+    legendContainer.appendChild(item);
   });
 
-  // Rebuild Sidebar with unique counts[cite: 2]
+  // Rebuild the sidebar using the updated artistGroups[cite: 2]
   buildNeighborhoodSidebar(artistGroups, neighborhoods);
 }
 
