@@ -373,31 +373,87 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   for (let key in artistGroups) delete artistGroups[key];
 
   data.forEach(row => {
-    // We still use seenIds to prevent counting the SAME record twice 
-    // due to Airtable pagination glitches
+    // Prevent double-counting the same record due to pagination
     if (seenIds.has(row.id)) return;
     seenIds.add(row.id);
 
-    // FIX: Get the neighborhood(s). Ensure it's treated as an array.
+    // Get the neighborhood(s). Handle both single strings and arrays
     let ntas = row.LinkedNTA_Code;
     if (!ntas) return;
-    if (!Array.isArray(ntas)) ntas = [ntas]; // Force into array if it's a single string
+    if (!Array.isArray(ntas)) ntas = [ntas];
 
-    // Loop through EVERY neighborhood selected by this artist
     ntas.forEach(n => {
-      // Ensure we have a valid name and not a raw Airtable ID (recXXX)[cite: 2]
+      // Ensure we have a valid name and not a raw Airtable ID[cite: 2]
       if (n && typeof n === 'string' && !n.startsWith('rec')) {
         const neighborhoodName = n.trim();
         
-        // 1. Update the Count Map (used for the Map Colors/Legend)[cite: 2]
+        // Update the Count Map for coloring and the Artist Groups for popups[cite: 2]
         countsMap[neighborhoodName] = (countsMap[neighborhoodName] || 0) + 1;
         
-        // 2. Add to the Artist Groups (used for the Popups/Sidebar)[cite: 2]
         if (!artistGroups[neighborhoodName]) artistGroups[neighborhoodName] = [];
         artistGroups[neighborhoodName].push(row);
       }
     });
   });
+
+  // Match counts to GeoJSON properties[cite: 2]
+  neighborhoods.features.forEach(f => {
+    const geoName = f.properties.ntaname; 
+    f.properties.artistCount = countsMap[geoName] || 0; 
+  });
+
+  const counts = neighborhoods.features.map(f => f.properties.artistCount);
+  const safeMax = Math.max(...counts) || 1;
+
+  // --- SOURCE & LAYER MANAGEMENT ---
+  // Ensure the source exists BEFORE adding layers[cite: 2]
+  if (map.getSource('neighborhoods')) {
+    map.getSource('neighborhoods').setData(neighborhoods);
+  } else {
+    map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
+  }
+
+  // Only add the layers if they don't already exist[cite: 2]
+  if (!map.getLayer('neighborhood-fill')) {
+    map.addLayer({
+      id: 'neighborhood-fill',
+      type: 'fill',
+      source: 'neighborhoods', // Source is now guaranteed to exist[cite: 2]
+      paint: {
+        'fill-color': [
+          'interpolate', ['exponential', 0.5], ['get', 'artistCount'],
+          0, '#f2f0f7',
+          safeMax * 0.25, '#cbc9e2',
+          safeMax * 0.5, '#9e9ac8',
+          safeMax * 0.75, '#756bb1',
+          safeMax, '#54278f'
+        ],
+        'fill-opacity': 0.7
+      }
+    }, 'subway-lines-layer'); // Optional: Add below subway lines[cite: 2]
+
+    map.addLayer({
+      id: 'neighborhood-outline',
+      type: 'line',
+      source: 'neighborhoods',
+      paint: { 'line-color': '#333', 'line-width': 1 }
+    }, 'subway-lines-layer');
+  }
+
+  // --- LEGEND & SIDEBAR ---
+  const legendContainer = document.getElementById('legend');
+  legendContainer.innerHTML = '<h3>Artist Density</h3>';
+  const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
+  const grades = [0, Math.round(safeMax*0.25), Math.round(safeMax*0.5), Math.round(safeMax*0.75), safeMax];
+
+  grades.forEach((grade, i) => {
+    const item = document.createElement('div');
+    item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block; margin-right:5px;"></span> ${grade}`;
+    legendContainer.appendChild(item);
+  });
+
+  buildNeighborhoodSidebar(artistGroups, neighborhoods);
+}
 
   // 3. Match counts to GeoJSON properties for the Choropleth[cite: 2]
   neighborhoods.features.forEach(f => {
