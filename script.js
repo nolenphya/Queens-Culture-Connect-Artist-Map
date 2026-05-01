@@ -106,7 +106,7 @@ document.getElementById('search-input').addEventListener('keydown', (e) => {
     if (!query) return;
 
     const matches = allMarkers.filter(marker => {
-      const name = (marker.rowData["Org Name"] || "").toLowerCase();
+      const name = (marker.rowData["Name"] || "").toLowerCase();
       const tags = (marker.rowData.Tags || "").toLowerCase();
       return name.includes(query) || tags.includes(query);
     });
@@ -132,7 +132,7 @@ document.getElementById('search-input').addEventListener('keydown', (e) => {
 
       const link = document.createElement('a');
       link.href = '#';
-      link.textContent = marker.rowData["Org Name"] || "Unnamed";
+      link.textContent = marker.rowData["Name"] || "Unnamed";
       link.style.textDecoration = 'underline';
       link.style.color = '#007bff';
       link.addEventListener('click', (ev) => {
@@ -157,7 +157,7 @@ document.getElementById('search-input').addEventListener('input', (e) => {
   if (!query) return;
 
   const matches = allMarkers.filter(marker => {
-    const name = (marker.rowData["Org Name"] || "").toLowerCase();
+    const name = (marker.rowData["Name"] || "").toLowerCase();
     const tags = (marker.rowData.Tags || "").toLowerCase();
     return name.includes(query) || tags.includes(query);
   });
@@ -177,7 +177,7 @@ document.getElementById('search-input').addEventListener('input', (e) => {
 
     const link = document.createElement('a');
     link.href = '#';
-    link.textContent = marker.rowData["Org Name"] || "Unnamed";
+    link.textContent = marker.rowData["Name"] || "Unnamed";
     link.style.textDecoration = 'underline';
     link.style.color = '#007bff';
 
@@ -202,7 +202,7 @@ document.getElementById('search-input').addEventListener('keydown', (e) => {
     if (!query) return;
 
     const match = allMarkers.find(marker => {
-      const name = (marker.rowData["Org Name"] || "").toLowerCase();
+      const name = (marker.rowData["Name"] || "").toLowerCase();
       const tags = (marker.rowData.Tags || "").toLowerCase();
       return name.includes(query) || tags.includes(query);
     });
@@ -296,8 +296,42 @@ map.on('load', async () => {
     });
 
     // 5. Build Choropleth
-    createNeighborhoodChoropleth(data, neighborhoods, artistGroups);
 
+  function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
+  const countsMap = {};
+  const seenIds = new Set(); // Track unique Record IDs
+
+  // Clear artistGroups to ensure we start fresh
+  for (let key in artistGroups) delete artistGroups[key];
+
+  data.forEach(row => {
+    // 1. Skip if we've already processed this Record ID
+    if (seenIds.has(row.id)) return;
+    seenIds.add(row.id);
+
+    // 2. Identify the Neighborhood
+    let n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
+    
+    // Ensure n is a valid name and not an Airtable Record ID (starts with rec)
+    if (n && typeof n === 'string' && !n.startsWith('rec')) {
+      const neighborhoodName = n.trim();
+      
+      // Update the Count Map for the Choropleth
+      countsMap[neighborhoodName] = (countsMap[neighborhoodName] || 0) + 1;
+      
+      // Add to the Artist Groups for the Popups
+      if (!artistGroups[neighborhoodName]) artistGroups[neighborhoodName] = [];
+      artistGroups[neighborhoodName].push(row);
+    }
+  });
+
+  // 3. Match counts to GeoJSON
+  neighborhoods.features.forEach(f => {
+    const geoName = f.properties.ntaname; 
+    f.properties.artistCount = countsMap[geoName] || 0; 
+  });
+}
+    
     // 6. Subway Lines
     map.addSource('subway-lines', {
       type: 'geojson',
@@ -364,24 +398,6 @@ map.on('load', async () => {
     console.error("Initialization failed:", error);
   }
 }); // End map.on('load')
-
-function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
-  const countsMap = {};
-  const processedRecords = new Set(); // 1. Prevents double-counting
-
-  data.forEach(row => {
-    // Check the Set to see if we've already counted this artist
-    if (processedRecords.has(row.id)) return;
-
-    // 2. Use the renamed Lookup field (LinkedNTA_Code)
-    // Lookup fields often return an array, so we take the first item
-    const n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
-    
-    if (n && typeof n === 'string' && !n.startsWith('rec')) {
-      countsMap[n] = (countsMap[n] || 0) + 1;
-      processedRecords.add(row.id);
-    }
-  });
 
   // 3. Match counts to GeoJSON for Choropleth coloring
   neighborhoods.features.forEach(f => {
@@ -463,7 +479,7 @@ data.forEach(row => {
         
         return `
           <div style="margin-top:8px;">
-            <div style="font-weight:bold; font-size:14px;">${a["Org Name"] || "Unnamed"}</div>
+            <div style="font-weight:bold; font-size:14px;">${a["Name"] || "Unnamed"}</div>
             <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">
               View Profile →
             </a>
