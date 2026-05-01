@@ -503,7 +503,7 @@ data.forEach(row => {
   });
 
   buildNeighborhoodSidebar(artistGroups, neighborhoods); // Corrected variable name
-}
+
 
 // =======================
 // Zoom-based Label Visibility
