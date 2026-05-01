@@ -504,7 +504,7 @@ function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
 
   // Rebuild the sidebar using the updated artistGroups[cite: 2]
   buildNeighborhoodSidebar(artistGroups, neighborhoods);
-}
+
 
 
 
