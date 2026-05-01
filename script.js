@@ -367,147 +367,113 @@ map.on('load', async () => {
 
 function createNeighborhoodChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
-  const processedRecords = new Set(); // 1. Prevents double-counting
+  const seenIds = new Set(); // 1. Prevents double-counting by tracking unique Record IDs
+
+  // Clear existing artistGroups to ensure no ghost data remains
+  for (let key in artistGroups) delete artistGroups[key];
 
   data.forEach(row => {
-    // Check the Set to see if we've already counted this artist
-    if (processedRecords.has(row.id)) return;
+    // 2. skip if we've already counted this specific record
+    if (seenIds.has(row.id)) return;
+    seenIds.add(row.id);
 
-    // 2. Use the renamed Lookup field (LinkedNTA_Code)
-    // Lookup fields often return an array, so we take the first item
-    const n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
+    // Use the LinkedNTA_Code lookup field
+    let n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
     
+    // Ensure we have a valid name and not a raw Airtable ID (recXXX)[cite: 2]
     if (n && typeof n === 'string' && !n.startsWith('rec')) {
-      countsMap[n] = (countsMap[n] || 0) + 1;
-      processedRecords.add(row.id);
+      const neighborhoodName = n.trim();
+      
+      // Update the Count Map for coloring the map[cite: 2]
+      countsMap[neighborhoodName] = (countsMap[neighborhoodName] || 0) + 1;
+      
+      // Add to the Artist Groups for the popup list[cite: 2]
+      if (!artistGroups[neighborhoodName]) artistGroups[neighborhoodName] = [];
+      artistGroups[neighborhoodName].push(row);
     }
   });
 
-  // 3. Match counts to GeoJSON for Choropleth coloring
+  // 3. Match counts to GeoJSON properties[cite: 2]
   neighborhoods.features.forEach(f => {
     const geoName = f.properties.ntaname; 
     f.properties.artistCount = countsMap[geoName] || 0; 
   });
 
-  // Calculate safeMax for the color scale
+  // Calculate the color scale based on actual counts[cite: 2]
   const counts = neighborhoods.features.map(f => f.properties.artistCount);
   const safeMax = Math.max(...counts) || 1;
 
-  // Refresh the map source with the new data
+  // Refresh the map source data
   if (map.getSource('neighborhoods')) {
     map.getSource('neighborhoods').setData(neighborhoods);
+  } else {
+    map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
   }
-// Inside map.on('load')
-data.forEach(row => {
-  
-  let n = Array.isArray(row.LinkedNTA_Code) ? row.LinkedNTA_Code[0] : row.LinkedNTA_Code;
-  
-  // If 'n' is still an ID (starts with 'rec'), 
-  // you MUST use the Lookup field method mentioned above.
-  if (!n || n.startsWith('rec')) return; 
 
-  if (!artistGroups[n]) artistGroups[n] = [];
-  artistGroups[n].push(row);
-});
-  // The rest of the function remains the same
-  neighborhoods.features.forEach(f => {
-    const geoName = f.properties.ntaname; 
-    f.properties.artistCount = countsMap[geoName] || 0; 
+  // Define the map layers (Fill and Outline)[cite: 2]
+  if (!map.getLayer('neighborhood-fill')) {
+    map.addLayer({
+      id: 'neighborhood-fill',
+      type: 'fill',
+      source: 'neighborhoods',
+      paint: {
+        'fill-color': [
+          'interpolate', ['exponential', 0.5], ['get', 'artistCount'],
+          0, '#f2f0f7',
+          safeMax * 0.25, '#cbc9e2',
+          safeMax * 0.5, '#9e9ac8',
+          safeMax * 0.75, '#756bb1',
+          safeMax, '#54278f'
+        ],
+        'fill-opacity': 0.7
+      }
+    });
+
+    map.addLayer({
+      id: 'neighborhood-outline',
+      type: 'line',
+      source: 'neighborhoods',
+      paint: { 'line-color': '#333', 'line-width': 1 }
+    });
+  }
+
+  // 4. Corrected Pop-up Logic with Name fallback[cite: 2]
+  map.off('click', 'neighborhood-fill'); // Remove old listeners to prevent duplicates
+  map.on('click', 'neighborhood-fill', (e) => {
+    const feature = e.features[0];
+    const name = feature.properties.ntaname;
+    const artists = artistGroups[name] || [];
+
+    const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
+    const DETAIL_SLUG = "/artists-details"; 
+
+    const html = `
+      <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
+        <h3 style="margin:0 0 5px 0;">${name}</h3>
+        <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
+        <hr style="border:0; border-top:1px solid #eee;">
+        ${artists.map(a => {
+          // FIX: Check multiple name fields to avoid "Unnamed"[cite: 2]
+          const displayName = a["Name"] || a["Org Name"] || a["Organization Name"] || "Unnamed Artist";
+          const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
+          const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
+          
+          return `
+            <div style="margin-top:8px;">
+              <div style="font-weight:bold; font-size:14px;">${displayName}</div>
+              <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">
+                View Profile →
+              </a>
+            </div>`;
+        }).join('')}
+      </div>`;
+
+    new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
   });
 
-
-  map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
-
-  map.addLayer({
-    id: 'neighborhood-fill',
-    type: 'fill',
-    source: 'neighborhoods',
-    paint: {
-      'fill-color': [
-        'interpolate', ['exponential', 0.5], ['get', 'artistCount'],
-        0, '#f2f0f7',
-        safeMax * 0.25, '#cbc9e2',
-        safeMax * 0.5, '#9e9ac8',
-        safeMax * 0.75, '#756bb1',
-        safeMax, '#54278f'
-      ],
-      'fill-opacity': 0.7
-    }
-  });
-
-  map.addLayer({
-    id: 'neighborhood-outline',
-    type: 'line',
-    source: 'neighborhoods',
-    paint: { 'line-color': '#333', 'line-width': 1 }
-  });
-
-  // Pop-up Logic
- map.on('click', 'neighborhood-fill', (e) => {
-  const feature = e.features[0];
-  const name = feature.properties.ntaname;
-  const artists = artistGroups[name] || [];
-
-  // Softr Modal URL Construction
-  const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
-  const DETAIL_SLUG = "/artists-details"; 
-
-  const html = `
-    <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
-      <h3 style="margin:0 0 5px 0;">${name}</h3>
-      <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
-      <hr style="border:0; border-top:1px solid #eee;">
-      ${artists.map(a => {
-        // This creates the link that triggers the Softr Modal
-        const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
-        const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
-        
-        return `
-          <div style="margin-top:8px;">
-            <div style="font-weight:bold; font-size:14px;">${a["Org Name"] || "Unnamed"}</div>
-            <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">
-              View Profile →
-            </a>
-          </div>`;
-      }).join('')}
-    </div>`;
-
-  new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-});
-
-  // Legend UI
-  const legendContainer = document.getElementById('legend');
-  legendContainer.innerHTML = '<h3>Artist Density</h3>';
-  const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
-  const grades = [0, Math.round(safeMax*0.25), Math.round(safeMax*0.5), Math.round(safeMax*0.75), safeMax];
-
-  grades.forEach((grade, i) => {
-    const item = document.createElement('div');
-    item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block; margin-right:5px;"></span> ${grade}`;
-    legendContainer.appendChild(item);
-  });
-
-  buildNeighborhoodSidebar(artistGroups, neighborhoods); // Corrected variable name
+  // Rebuild Sidebar with unique counts[cite: 2]
+  buildNeighborhoodSidebar(artistGroups, neighborhoods);
 }
-
-// =======================
-// Zoom-based Label Visibility
-// =======================
-map.on('zoom', () => {
-  const zoomLevel = map.getZoom();
-  map.setLayoutProperty(
-    'subway-station-labels',
-    'visibility',
-    zoomLevel >= 14 ? 'visible' : 'none'
-  );
-
-  // Show marker labels at same zoom level
-  allMarkers.forEach(marker => {
-    if (marker.labelElement) {
-      marker.labelElement.style.display = zoomLevel >= 14 ? 'block' : 'none';
-    }
-  });
-});
 
 
 
