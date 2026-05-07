@@ -105,4 +105,82 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   const safeMax = Math.max(...neighborhoods.features.map(f => f.properties.artistCount)) || 1;
 
   if (!map.getSource('neighborhoods')) {
-    map.addSource('neighborhoods', { type: 'geojson', data:
+    map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
+  } else {
+    map.getSource('neighborhoods').setData(neighborhoods);
+  }
+
+  if (!map.getLayer('neighborhood-outline')) {
+    map.addLayer({ id: 'neighborhood-outline', type: 'line', source: 'neighborhoods', paint: { 'line-color': '#333', 'line-width': 0.8, 'line-opacity': 0.4 } }, 'subway-lines-layer');
+    map.addLayer({
+      id: 'neighborhood-fill', type: 'fill', source: 'neighborhoods',
+      paint: { 'fill-color': ['interpolate', ['exponential', 0.5], ['get', 'artistCount'], 0, '#f2f0f7', safeMax * 0.5, '#9e9ac8', safeMax, '#54278f'], 'fill-opacity': 0.7 }
+    }, 'neighborhood-outline');
+  }
+
+  const showPopup = (name, lngLat) => {
+    const artists = artistGroups[name] || [];
+    const html = `<div style="padding:10px; max-height:200px; overflow-y:auto;"><h3>${name}</h3><p><strong>${artists.length}</strong> Artists</p><hr>
+      ${artists.map(a => `<div style="margin-bottom:5px; font-weight:bold;">${a["Name"] || a["Org Name"] || "Unnamed"}</div>`).join('')}</div>`;
+    new mapboxgl.Popup().setLngLat(lngLat).setHTML(html).addTo(map);
+  };
+
+  map.on('click', 'neighborhood-fill', (e) => showPopup(e.features[0].properties.ntaname, e.lngLat));
+
+  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup);
+  setupSearch(data);
+}
+
+function updateSidebarAndLegend(groups, neighborhoods, popupFn) {
+  const container = document.getElementById('legend');
+  container.innerHTML = '<h3>Artist Neighborhoods</h3>';
+
+  Object.keys(groups).sort().forEach(name => {
+    const item = document.createElement('div');
+    item.className = 'sidebar-item';
+    item.style = "cursor:pointer; padding:5px; border-bottom:1px solid #eee; font-size:13px;";
+    item.innerHTML = `<strong>${name}</strong> (${groups[name].length})`;
+
+    item.onclick = () => {
+      const feature = neighborhoods.features.find(f => f.properties.ntaname === name);
+      if (feature) {
+        const center = turf.center(feature).geometry.coordinates;
+        map.flyTo({ center: center, zoom: 13 });
+        popupFn(name, center);
+      }
+    };
+    container.appendChild(item);
+  });
+}
+
+function setupSearch(data) {
+  const searchInput = document.getElementById('search-input');
+  const resultsBox = document.getElementById('search-results');
+
+  searchInput.addEventListener('input', (e) => {
+    const val = e.target.value.toLowerCase();
+    resultsBox.innerHTML = '';
+    if (!val) return;
+
+    const matches = data.filter(r => (r["Name"] || r["Org Name"] || "").toLowerCase().includes(val)).slice(0, 10);
+    matches.forEach(m => {
+      const div = document.createElement('div');
+      div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff;";
+      div.innerText = m["Name"] || m["Org Name"] || "Unnamed";
+      div.onclick = () => {
+        let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
+        const hoodName = ZIP_TO_NTA[zip];
+        if (hoodName) {
+           const feat = geoData.features.find(f => f.properties.ntaname === hoodName);
+           if (feat) {
+             const center = turf.center(feat).geometry.coordinates;
+             map.flyTo({ center, zoom: 14 });
+           }
+        }
+        resultsBox.innerHTML = '';
+        searchInput.value = div.innerText;
+      };
+      resultsBox.appendChild(div);
+    });
+  });
+}
