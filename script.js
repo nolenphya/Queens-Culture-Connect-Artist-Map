@@ -7,13 +7,21 @@ const map = new mapboxgl.Map({
   zoom: 11
 });
 
+// --- Add Map Controls ---
+map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+map.addControl(new mapboxgl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+    showUserHeading: true
+}), 'top-right');
+
 // Airtable Setup
 const AIRTABLE_API_KEY = 'patboskAQTJUi9FlQ.1c30c3c632cd4d7bd03cf949e50edd922425aba8dcbf0c8a6002e98db67c74a3';
 const BASE_ID = 'apppBx0a9hj0Z1ciw';
 const TABLE_NAME = 'tbl9OiPT8QI8ss20e';
 const AIRTABLE_URL = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`;
 
-// Zip Code Crosswalk
+// Zip Code Crosswalk Dictionary
 const ZIP_TO_NTA = {
   "11101": "Long Island City-Hunters Point", "11102": "Old Astoria-Hallets Point", "11103": "Astoria (Central)",
   "11104": "Sunnyside", "11105": "Astoria (North)-Ditmars-Steinway", "11106": "Astoria (East)-Woodside (North)",
@@ -35,7 +43,7 @@ const ZIP_TO_NTA = {
 };
 
 const artistGroups = {};
-let geoData = null; // Store geojson globally for zoom logic
+let geoData = null;
 
 async function fetchData() {
   const filterFormula = encodeURIComponent("{Approved}=TRUE()");
@@ -68,17 +76,25 @@ map.on('load', async () => {
     }
   });
 
-  // Subway Stops & Labels
+  // Subway Stops
   map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
   map.addLayer({
     id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-    paint: { 'circle-radius': 2.5, 'circle-color': '#fff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
+    paint: { 'circle-radius': 3, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
   });
+
+  // Subway Labels
   map.addLayer({
     id: 'subway-labels', type: 'symbol', source: 'subway-stops',
-    minzoom: 13,
-    layout: { 'text-field': ['get', 'stop_name'], 'text-font': ['Open Sans Semibold'], 'text-size': 10, 'text-offset': [0, 0.6], 'text-anchor': 'top' },
-    paint: { 'text-color': '#333', 'text-halo-color': '#fff', 'text-halo-width': 1 }
+    minzoom: 12.5,
+    layout: {
+      'text-field': ['get', 'stop_name'],
+      'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+      'text-size': 11,
+      'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+      'text-radial-offset': 0.8
+    },
+    paint: { 'text-color': '#333', 'text-halo-color': '#fff', 'text-halo-width': 2 }
   });
 
   createZipBasedChoropleth(data, geoData, artistGroups);
@@ -87,7 +103,6 @@ map.on('load', async () => {
 function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
   const seenIds = new Set();
-  for (let key in artistGroups) delete artistGroups[key];
 
   data.forEach(row => {
     if (seenIds.has(row.id)) return;
@@ -106,8 +121,6 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
 
   if (!map.getSource('neighborhoods')) {
     map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
-  } else {
-    map.getSource('neighborhoods').setData(neighborhoods);
   }
 
   if (!map.getLayer('neighborhood-outline')) {
@@ -118,10 +131,28 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     }, 'neighborhood-outline');
   }
 
+  // Define Popup Logic once to be reused by click and legend zoom
   const showPopup = (name, lngLat) => {
     const artists = artistGroups[name] || [];
-    const html = `<div style="padding:10px; max-height:200px; overflow-y:auto;"><h3>${name}</h3><p><strong>${artists.length}</strong> Artists</p><hr>
-      ${artists.map(a => `<div style="margin-bottom:5px; font-weight:bold;">${a["Name"] || a["Org Name"] || "Unnamed"}</div>`).join('')}</div>`;
+    const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
+    const DETAIL_SLUG = "/artists-details";
+
+    const html = `
+      <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
+        <h3 style="margin:0 0 5px 0;">${name}</h3>
+        <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
+        <hr style="border:0; border-top:1px solid #eee;">
+        ${artists.map(a => {
+          const displayName = a["Name"] || a["Org Name"] || a["Artist Name"] || "Unnamed Artist";
+          const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
+          const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
+          return `
+            <div style="margin-top:8px;">
+              <div style="font-weight:bold; font-size:14px;">${displayName}</div>
+              <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
+            </div>`;
+        }).join('')}
+      </div>`;
     new mapboxgl.Popup().setLngLat(lngLat).setHTML(html).addTo(map);
   };
 
@@ -137,15 +168,14 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn) {
 
   Object.keys(groups).sort().forEach(name => {
     const item = document.createElement('div');
-    item.className = 'sidebar-item';
-    item.style = "cursor:pointer; padding:5px; border-bottom:1px solid #eee; font-size:13px;";
+    item.style = "cursor:pointer; padding:8px; border-bottom:1px solid #eee; font-size:13px; background:#fff;";
     item.innerHTML = `<strong>${name}</strong> (${groups[name].length})`;
 
     item.onclick = () => {
       const feature = neighborhoods.features.find(f => f.properties.ntaname === name);
       if (feature) {
         const center = turf.center(feature).geometry.coordinates;
-        map.flyTo({ center: center, zoom: 13 });
+        map.flyTo({ center: center, zoom: 13.5 });
         popupFn(name, center);
       }
     };
@@ -175,6 +205,7 @@ function setupSearch(data) {
            if (feat) {
              const center = turf.center(feat).geometry.coordinates;
              map.flyTo({ center, zoom: 14 });
+             // Reuse same logic to show artist popup
            }
         }
         resultsBox.innerHTML = '';
