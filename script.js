@@ -13,8 +13,7 @@ const BASE_ID = 'apppBx0a9hj0Z1ciw';
 const TABLE_NAME = 'tbl9OiPT8QI8ss20e';
 const AIRTABLE_URL = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`;
 
-// --- THE ZIP TO NTA CROSSWALK ---
-// This dictionary maps Zip Codes to official NTA Neighborhood names
+// --- ZIP TO NTA CROSSWALK ---
 const ZIP_TO_NTA = {
   "11101": "Long Island City-Hunters Point",
   "11102": "Old Astoria-Hallets Point",
@@ -72,20 +71,19 @@ const ZIP_TO_NTA = {
   "11692": "Rockaway Beach-Arverne-Edgemere",
   "11693": "Breezy Point-Belle Harbor-Rockaway Park-Broad Channel",
   "11694": "Breezy Point-Belle Harbor-Rockaway Park-Broad Channel"
-  // Note: You can add more mapping here for all NYC zips if needed
 };
 
-let allMarkers = [];
-const artistGroups = {}; 
+const artistGroups = {};
 
 async function fetchData() {
   const filterFormula = encodeURIComponent("{Approved}=TRUE()");
+  const viewName = encodeURIComponent("Artists");
   let allRecords = [];
   let offset = null;
 
   try {
     do {
-      const fetchUrl = `${AIRTABLE_URL}?filterByFormula=${filterFormula}${offset ? `&offset=${offset}` : ""}`;
+      const fetchUrl = `${AIRTABLE_URL}?view=${viewName}&filterByFormula=${filterFormula}${offset ? `&offset=${offset}` : ""}`;
       const res = await fetch(fetchUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } });
       const data = await res.json();
       allRecords = allRecords.concat(data.records || []);
@@ -102,16 +100,27 @@ map.on('load', async () => {
   try {
     const records = await fetchData();
     const data = records.map(r => ({ id: r.id, ...r.fields }));
-
     const neighborhoods = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson').then(res => res.json());
 
-    // Build Subway Layer first
+    // 1. Subway Lines (Colored)[cite: 2]
     map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
     map.addLayer({
       id: 'subway-lines-layer',
       type: 'line',
       source: 'subway-lines',
-      paint: { 'line-width': 2, 'line-color': '#000' }
+      paint: {
+        'line-width': 2,
+        'line-color': ['match', ['get', 'rt_symbol'], '1', '#EE352E', '2', '#EE352E', '3', '#EE352E', '4', '#00933C', '5', '#00933C', '6', '#00933C', 'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD', 'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319', 'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A', 'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633', '7', '#B933AD', '#000000']
+      }
+    });
+
+    // 2. Subway Stops[cite: 2]
+    map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
+    map.addLayer({
+      id: 'subway-stations-stops',
+      type: 'circle',
+      source: 'subway-stops',
+      paint: { 'circle-radius': 2, 'circle-color': '#ffffff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
     });
 
     createZipBasedChoropleth(data, neighborhoods, artistGroups);
@@ -130,23 +139,17 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     if (seenIds.has(row.id)) return;
     seenIds.add(row.id);
 
-    // 1. Get the Zip Code from Airtable
-    // Supports both a string or an array (if it's a linked record)
     let rawZip = Array.isArray(row.Zip_Code) ? row.Zip_Code[0] : row.Zip_Code;
     const zip = String(rawZip || "").trim();
-
-    // 2. Look up the Neighborhood name based on the Zip
     const neighborhoodName = ZIP_TO_NTA[zip];
 
     if (neighborhoodName) {
       countsMap[neighborhoodName] = (countsMap[neighborhoodName] || 0) + 1;
-      
       if (!artistGroups[neighborhoodName]) artistGroups[neighborhoodName] = [];
       artistGroups[neighborhoodName].push(row);
     }
   });
 
-  // Match counts to GeoJSON
   neighborhoods.features.forEach(f => {
     const geoName = f.properties.ntaname;
     f.properties.artistCount = countsMap[geoName] || 0;
@@ -161,6 +164,16 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
   }
 
+  // 3. Persistent Outlines (Even if 0 artists)[cite: 2]
+  if (!map.getLayer('neighborhood-outline')) {
+    map.addLayer({
+      id: 'neighborhood-outline',
+      type: 'line',
+      source: 'neighborhoods',
+      paint: { 'line-color': '#333', 'line-width': 0.8, 'line-opacity': 0.5 }
+    }, 'subway-lines-layer');
+  }
+
   if (!map.getLayer('neighborhood-fill')) {
     map.addLayer({
       id: 'neighborhood-fill',
@@ -168,27 +181,42 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
       source: 'neighborhoods',
       paint: {
         'fill-color': [
-          'interpolate', ['linear'], ['get', 'artistCount'],
+          'interpolate', ['exponential', 0.5], ['get', 'artistCount'],
           0, '#f2f0f7',
+          safeMax * 0.25, '#cbc9e2',
+          safeMax * 0.5, '#9e9ac8',
+          safeMax * 0.75, '#756bb1',
           safeMax, '#54278f'
         ],
         'fill-opacity': 0.7
       }
-    }, 'subway-lines-layer');
+    }, 'neighborhood-outline');
   }
 
-  // Popup Logic
+  // 4. Softr Popup Integration[cite: 2]
+  map.off('click', 'neighborhood-fill');
   map.on('click', 'neighborhood-fill', (e) => {
     const feature = e.features[0];
     const name = feature.properties.ntaname;
     const artists = artistGroups[name] || [];
+    const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
+    const DETAIL_SLUG = "/artists-details";
 
     const html = `
-      <div style="padding:10px; font-family:sans-serif;">
-        <h3 style="margin:0;">${name}</h3>
-        <p><strong>${artists.length}</strong> Artists by Zip Code</p>
-        <hr>
-        ${artists.map(a => `<div style="font-weight:bold;">${a["Name"] || a["Org Name"] || "Unnamed"}</div>`).join('')}
+      <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
+        <h3 style="margin:0 0 5px 0;">${name}</h3>
+        <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists (by Zip)</p>
+        <hr style="border:0; border-top:1px solid #eee;">
+        ${artists.map(a => {
+          const displayName = a["Name"] || a["Org Name"] || a["Artist Name"] || "Unnamed Artist";
+          const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
+          const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
+          return `
+            <div style="margin-top:8px;">
+              <div style="font-weight:bold; font-size:14px;">${displayName}</div>
+              <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
+            </div>`;
+        }).join('')}
       </div>`;
     new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
   });
@@ -198,7 +226,13 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
 
 function updateLegendUI(safeMax) {
   const legend = document.getElementById('legend');
-  legend.innerHTML = `<h3>Artist Density (by Zip)</h3>
-    <div><span style="background:#f2f0f7; width:12px; height:12px; display:inline-block;"></span> 0</div>
-    <div><span style="background:#54278f; width:12px; height:12px; display:inline-block;"></span> ${safeMax}</div>`;
+  legend.innerHTML = `<h3>Artist Density</h3>`;
+  const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
+  const grades = [0, Math.round(safeMax*0.25), Math.round(safeMax*0.5), Math.round(safeMax*0.75), safeMax];
+
+  grades.forEach((grade, i) => {
+    const item = document.createElement('div');
+    item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block; margin-right:5px;"></span> ${grade}`;
+    legend.appendChild(item);
+  });
 }
