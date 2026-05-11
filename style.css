@@ -152,6 +152,14 @@ body, html {
   border-radius: 4px;
 }
 
+#search-results {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+  background: white;
+  margin-top: 5px;
+  border-radius: 4px;
+}
 
 /* Legend Content fills the rest */
 /* This is the scrollable area */

@@ -7,7 +7,7 @@ const map = new mapboxgl.Map({
   zoom: 11
 });
 
-// --- Add Map Controls ---
+// --- Add Navigation & Geolocation Controls ---
 map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 map.addControl(new mapboxgl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
@@ -21,7 +21,7 @@ const BASE_ID = 'apppBx0a9hj0Z1ciw';
 const TABLE_NAME = 'tbl9OiPT8QI8ss20e';
 const AIRTABLE_URL = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`;
 
-// Zip Code Crosswalk Dictionary
+// Zip Code Crosswalk
 const ZIP_TO_NTA = {
   "11101": "Long Island City-Hunters Point", "11102": "Old Astoria-Hallets Point", "11103": "Astoria (Central)",
   "11104": "Sunnyside", "11105": "Astoria (North)-Ditmars-Steinway", "11106": "Astoria (East)-Woodside (North)",
@@ -80,13 +80,13 @@ map.on('load', async () => {
   map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
   map.addLayer({
     id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-    paint: { 'circle-radius': 3, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
+    paint: { 'circle-radius': 3.5, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
   });
 
-  // FIXED: Subway Labels
+  // FIX: Subway Labels (Using standard Arial to ensure they appear)
   map.addLayer({
     id: 'subway-labels', type: 'symbol', source: 'subway-stops',
-    minzoom: 12.5,
+    minzoom: 13,
     layout: {
       'text-field': ['get', 'stop_name'],
       'text-font': ['Arial Unicode MS Regular'],
@@ -94,7 +94,11 @@ map.on('load', async () => {
       'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
       'text-radial-offset': 0.8
     },
-    paint: { 'text-color': '#333', 'text-halo-color': '#fff', 'text-halo-width': 2 }
+    paint: {
+      'text-color': '#444',
+      'text-halo-color': '#fff',
+      'text-halo-width': 2
+    }
   });
 
   createZipBasedChoropleth(data, geoData, artistGroups);
@@ -123,12 +127,14 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
   }
 
-  if (!map.getLayer('neighborhood-outline')) {
-    map.addLayer({ id: 'neighborhood-outline', type: 'line', source: 'neighborhoods', paint: { 'line-color': '#333', 'line-width': 0.8, 'line-opacity': 0.4 } }, 'subway-lines-layer');
+  if (!map.getLayer('neighborhood-fill')) {
     map.addLayer({
       id: 'neighborhood-fill', type: 'fill', source: 'neighborhoods',
-      paint: { 'fill-color': ['interpolate', ['exponential', 0.5], ['get', 'artistCount'], 0, '#f2f0f7', safeMax * 0.5, '#9e9ac8', safeMax, '#54278f'], 'fill-opacity': 0.7 }
-    }, 'neighborhood-outline');
+      paint: {
+        'fill-color': ['interpolate', ['exponential', 0.5], ['get', 'artistCount'], 0, '#f2f0f7', safeMax * 0.5, '#9e9ac8', safeMax, '#54278f'],
+        'fill-opacity': 0.7
+      }
+    }, 'subway-lines-layer');
   }
 
   const showPopup = (name, lngLat) => {
@@ -139,10 +145,10 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     const html = `
       <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
         <h3 style="margin:0 0 5px 0;">${name}</h3>
-        <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
+        <p><strong>${artists.length}</strong> Artists</p>
         <hr style="border:0; border-top:1px solid #eee;">
         ${artists.map(a => {
-          const displayName = a["Name"] || a["Org Name"] || a["Artist Name"] || "Unnamed Artist";
+          const displayName = a["Name"] || a["Org Name"] || "Unnamed Artist";
           const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
           const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
           return `
@@ -157,29 +163,36 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
 
   map.on('click', 'neighborhood-fill', (e) => showPopup(e.features[0].properties.ntaname, e.lngLat));
 
-  // RESTORED: Top Color Scale UI
-  updateColorScaleUI(safeMax);
-  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup);
+  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, safeMax);
   setupSearch(data);
 }
 
-function updateColorScaleUI(safeMax) {
-  const container = document.getElementById('color-scale'); // Ensure you have a div with id 'color-scale' at the top
-  if (!container) return;
-  container.innerHTML = '<h3>Artist Density</h3>';
-  const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
-  const steps = [0, safeMax * 0.25, safeMax * 0.5, safeMax * 0.75, safeMax];
-  steps.forEach((val, i) => {
-    const item = document.createElement('div');
-    item.style = "display:inline-block; margin-right:10px; font-size:12px;";
-    item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block;"></span> ${Math.round(val)}`;
-    container.appendChild(item);
-  });
-}
-
-function updateSidebarAndLegend(groups, neighborhoods, popupFn) {
+function updateSidebarAndLegend(groups, neighborhoods, popupFn, safeMax) {
   const container = document.getElementById('legend');
-  container.innerHTML = '<h3>Artist Neighborhoods</h3>';
+  
+  // 1. ADD COLOR SCALE TO TOP OF LEGEND
+  let colorHtml = `
+    <div style="margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #eee;">
+      <h4 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:#666;">Artist Density</h4>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding-right:10px;">
+        <div style="display:flex; flex-direction:column; align-items:center;">
+          <div style="width:20px; height:20px; background:#f2f0f7; border:1px solid #ccc;"></div>
+          <span style="font-size:10px;">0</span>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center;">
+          <div style="width:20px; height:20px; background:#9e9ac8; border:1px solid #ccc;"></div>
+          <span style="font-size:10px;">${Math.round(safeMax/2)}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center;">
+          <div style="width:20px; height:20px; background:#54278f; border:1px solid #ccc;"></div>
+          <span style="font-size:10px;">${safeMax}</span>
+        </div>
+      </div>
+    </div>
+    <h3>Artist Neighborhoods</h3>
+  `;
+  
+  container.innerHTML = colorHtml;
 
   Object.keys(groups).sort().forEach(name => {
     const item = document.createElement('div');
@@ -198,6 +211,7 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn) {
   });
 }
 
+// 3. SEARCH BY NAME, NTA, AND DISCIPLINE
 function setupSearch(data) {
   const searchInput = document.getElementById('search-input');
   const resultsBox = document.getElementById('search-results');
@@ -207,18 +221,21 @@ function setupSearch(data) {
     resultsBox.innerHTML = '';
     if (!val) return;
 
-    // EXPANDED SEARCH: Includes Neighborhoods and Disciplines
     const matches = data.filter(r => {
-        const name = (r["Name"] || r["Org Name"] || "").toLowerCase();
-        const ntas = Array.isArray(r["LinkedNTA_Code"]) ? r["LinkedNTA_Code"].join(" ").toLowerCase() : (r["LinkedNTA_Code"] || "").toLowerCase();
-        const disciplines = Array.isArray(r["Artistic Disciplines"]) ? r["Artistic Disciplines"].join(" ").toLowerCase() : (r["Artistic Disciplines"] || "").toLowerCase();
-        return name.includes(val) || ntas.includes(val) || disciplines.includes(val);
+      const nameMatch = (r["Name"] || r["Org Name"] || "").toLowerCase().includes(val);
+      // Check NTA field (assuming the field name in Airtable is "LinkedNTA_Code")
+      const ntaMatch = String(r["LinkedNTA_Code"] || "").toLowerCase().includes(val);
+      // Check Disciplines field (assuming the field name in Airtable is "Artistic Disciplines")
+      const disciplineMatch = String(r["Artistic Disciplines"] || "").toLowerCase().includes(val);
+      
+      return nameMatch || ntaMatch || disciplineMatch;
     }).slice(0, 10);
 
     matches.forEach(m => {
       const div = document.createElement('div');
-      div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff;";
-      div.innerText = m["Name"] || m["Org Name"] || "Unnamed";
+      div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
+      div.innerHTML = `<b>${m["Name"] || m["Org Name"] || "Unnamed"}</b><br><small>${m["Artistic Disciplines"] || ""}</small>`;
+      
       div.onclick = () => {
         let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
         const hoodName = ZIP_TO_NTA[zip];
@@ -226,11 +243,11 @@ function setupSearch(data) {
            const feat = geoData.features.find(f => f.properties.ntaname === hoodName);
            if (feat) {
              const center = turf.center(feat).geometry.coordinates;
-             map.flyTo({ center, zoom: 14 });
+             map.flyTo({ center, zoom: 14.5 });
            }
         }
         resultsBox.innerHTML = '';
-        searchInput.value = div.innerText;
+        searchInput.value = m["Name"] || m["Org Name"];
       };
       resultsBox.appendChild(div);
     });
