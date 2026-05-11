@@ -83,13 +83,13 @@ map.on('load', async () => {
     paint: { 'circle-radius': 3, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
   });
 
-  // Subway Labels
+  // FIXED: Subway Labels
   map.addLayer({
     id: 'subway-labels', type: 'symbol', source: 'subway-stops',
     minzoom: 12.5,
     layout: {
       'text-field': ['get', 'stop_name'],
-      'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+      'text-font': ['Arial Unicode MS Regular'],
       'text-size': 11,
       'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
       'text-radial-offset': 0.8
@@ -131,7 +131,6 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     }, 'neighborhood-outline');
   }
 
-  // Define Popup Logic once to be reused by click and legend zoom
   const showPopup = (name, lngLat) => {
     const artists = artistGroups[name] || [];
     const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
@@ -158,8 +157,24 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
 
   map.on('click', 'neighborhood-fill', (e) => showPopup(e.features[0].properties.ntaname, e.lngLat));
 
+  // RESTORED: Top Color Scale UI
+  updateColorScaleUI(safeMax);
   updateSidebarAndLegend(artistGroups, neighborhoods, showPopup);
   setupSearch(data);
+}
+
+function updateColorScaleUI(safeMax) {
+  const container = document.getElementById('color-scale'); // Ensure you have a div with id 'color-scale' at the top
+  if (!container) return;
+  container.innerHTML = '<h3>Artist Density</h3>';
+  const colors = ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'];
+  const steps = [0, safeMax * 0.25, safeMax * 0.5, safeMax * 0.75, safeMax];
+  steps.forEach((val, i) => {
+    const item = document.createElement('div');
+    item.style = "display:inline-block; margin-right:10px; font-size:12px;";
+    item.innerHTML = `<span style="background:${colors[i]}; width:12px; height:12px; display:inline-block;"></span> ${Math.round(val)}`;
+    container.appendChild(item);
+  });
 }
 
 function updateSidebarAndLegend(groups, neighborhoods, popupFn) {
@@ -192,7 +207,14 @@ function setupSearch(data) {
     resultsBox.innerHTML = '';
     if (!val) return;
 
-    const matches = data.filter(r => (r["Name"] || r["Org Name"] || "").toLowerCase().includes(val)).slice(0, 10);
+    // EXPANDED SEARCH: Includes Neighborhoods and Disciplines
+    const matches = data.filter(r => {
+        const name = (r["Name"] || r["Org Name"] || "").toLowerCase();
+        const ntas = Array.isArray(r["LinkedNTA_Code"]) ? r["LinkedNTA_Code"].join(" ").toLowerCase() : (r["LinkedNTA_Code"] || "").toLowerCase();
+        const disciplines = Array.isArray(r["Artistic Disciplines"]) ? r["Artistic Disciplines"].join(" ").toLowerCase() : (r["Artistic Disciplines"] || "").toLowerCase();
+        return name.includes(val) || ntas.includes(val) || disciplines.includes(val);
+    }).slice(0, 10);
+
     matches.forEach(m => {
       const div = document.createElement('div');
       div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff;";
@@ -205,7 +227,6 @@ function setupSearch(data) {
            if (feat) {
              const center = turf.center(feat).geometry.coordinates;
              map.flyTo({ center, zoom: 14 });
-             // Reuse same logic to show artist popup
            }
         }
         resultsBox.innerHTML = '';
