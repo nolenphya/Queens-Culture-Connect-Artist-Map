@@ -143,6 +143,10 @@ body, html {
   margin: 0 10px 10px 10px;
 }
 
+.search-item.highlighted {
+  background-color: #f0f8ff !important; /* Light blue highlight */
+  border-left: 4px solid #007bff;
+}
 #search-input {
   width: 100%;
   box-sizing: border-box;

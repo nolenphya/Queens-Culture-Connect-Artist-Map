@@ -66,8 +66,25 @@ map.on('load', async () => {
   const data = records.map(r => ({ id: r.id, ...r.fields }));
   geoData = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson').then(res => res.json());
 
-  // Subway Lines
+  // 1. ADD NTA SOURCE FIRST (so we can layer things correctly)
+  map.addSource('neighborhoods', { type: 'geojson', data: geoData });
+
+  // 2. ADD SUBWAY DATA
   map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
+  map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
+
+  // 3. LAYER ORDER: Fill -> Outline -> Subway Lines -> Subway Dots -> Subway Labels
+  map.addLayer({
+    id: 'neighborhood-fill', type: 'fill', source: 'neighborhoods',
+    paint: { 'fill-opacity': 0.6 } // Color logic is handled in choropleth function
+  });
+
+  // RESTORE: Neighborhood boundaries
+  map.addLayer({
+    id: 'neighborhood-outline', type: 'line', source: 'neighborhoods',
+    paint: { 'line-color': '#333', 'line-width': 1.5, 'line-opacity': 0.8 }
+  });
+
   map.addLayer({
     id: 'subway-lines-layer', type: 'line', source: 'subway-lines',
     paint: {
@@ -76,29 +93,23 @@ map.on('load', async () => {
     }
   });
 
-  // Subway Stops
-  map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
   map.addLayer({
     id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-    paint: { 'circle-radius': 3.5, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
+    paint: { 'circle-radius': 3.5, 'circle-color': '#fff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
   });
 
-  // FIX: Subway Labels (Using standard Arial to ensure they appear)
+  // FIX: Subway Labels (Ensured to be at the very top)
   map.addLayer({
     id: 'subway-labels', type: 'symbol', source: 'subway-stops',
-    minzoom: 13,
+    minzoom: 12.5,
     layout: {
       'text-field': ['get', 'stop_name'],
-      'text-font': ['Arial Unicode MS Regular'],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Regular'],
       'text-size': 11,
       'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
       'text-radial-offset': 0.8
     },
-    paint: {
-      'text-color': '#444',
-      'text-halo-color': '#fff',
-      'text-halo-width': 2
-    }
+    paint: { 'text-color': '#000', 'text-halo-color': '#fff', 'text-halo-width': 2 }
   });
 
   createZipBasedChoropleth(data, geoData, artistGroups);
@@ -215,26 +226,43 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn, safeMax) {
 function setupSearch(data) {
   const searchInput = document.getElementById('search-input');
   const resultsBox = document.getElementById('search-results');
+  let selectedIndex = -1;
+
+  searchInput.addEventListener('keydown', (e) => {
+    const items = resultsBox.querySelectorAll('.search-item');
+    if (e.key === 'ArrowDown') {
+      selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+      updateSelection(items);
+    } else if (e.key === 'ArrowUp') {
+      selectedIndex = Math.max(selectedIndex - 1, 0);
+      updateSelection(items);
+    } else if (e.key === 'Enter' && selectedIndex > -1) {
+      items[selectedIndex].click();
+    }
+  });
+
+  function updateSelection(items) {
+    items.forEach((el, i) => el.classList.toggle('highlighted', i === selectedIndex));
+  }
 
   searchInput.addEventListener('input', (e) => {
     const val = e.target.value.toLowerCase();
     resultsBox.innerHTML = '';
+    selectedIndex = -1;
     if (!val) return;
 
     const matches = data.filter(r => {
-      const nameMatch = (r["Name"] || r["Org Name"] || "").toLowerCase().includes(val);
-      // Check NTA field (assuming the field name in Airtable is "LinkedNTA_Code")
-      const ntaMatch = String(r["LinkedNTA_Code"] || "").toLowerCase().includes(val);
-      // Check Disciplines field (assuming the field name in Airtable is "Artistic Disciplines")
-      const disciplineMatch = String(r["Artistic Disciplines"] || "").toLowerCase().includes(val);
-      
-      return nameMatch || ntaMatch || disciplineMatch;
+      const name = (r["Name"] || r["Org Name"] || "").toLowerCase();
+      const disciplines = String(r["Artistic Disciplines"] || "").toLowerCase();
+      return name.includes(val) || disciplines.includes(val);
     }).slice(0, 10);
 
     matches.forEach(m => {
       const div = document.createElement('div');
-      div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
-      div.innerHTML = `<b>${m["Name"] || m["Org Name"] || "Unnamed"}</b><br><small>${m["Artistic Disciplines"] || ""}</small>`;
+      div.className = 'search-item';
+      div.style = "padding:10px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff;";
+      // Updated display to avoid Softr ID showing
+      div.innerHTML = `<strong>${m["Name"] || m["Org Name"] || "Artist"}</strong><br><span style="font-size:11px; color:#666;">${m["Artistic Disciplines"] || ""}</span>`;
       
       div.onclick = () => {
         let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
@@ -242,14 +270,32 @@ function setupSearch(data) {
         if (hoodName) {
            const feat = geoData.features.find(f => f.properties.ntaname === hoodName);
            if (feat) {
-             const center = turf.center(feat).geometry.coordinates;
-             map.flyTo({ center, zoom: 14.5 });
+             map.flyTo({ center: turf.center(feat).geometry.coordinates, zoom: 14.5 });
            }
         }
         resultsBox.innerHTML = '';
-        searchInput.value = m["Name"] || m["Org Name"];
+        searchInput.value = '';
       };
       resultsBox.appendChild(div);
     });
   });
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const legendPanel = document.getElementById('legend-panel');
+  const toggleBtn = document.getElementById('legend-toggle');
+  const resetBtn = document.getElementById('reset-legend');
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      legendPanel.classList.toggle('collapsed');
+      toggleBtn.textContent = legendPanel.classList.contains('collapsed') ? 'Show' : 'Hide';
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      map.flyTo({ center: [-73.94, 40.73], zoom: 11 });
+    });
+  }
+});
