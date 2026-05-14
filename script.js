@@ -66,27 +66,61 @@ map.on('load', async () => {
   const data = records.map(r => ({ id: r.id, ...r.fields }));
   geoData = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson').then(res => res.json());
 
-  // 1. ADD NTA SOURCE FIRST (so we can layer things correctly)
+  // Add the NTA source once
   map.addSource('neighborhoods', { type: 'geojson', data: geoData });
 
-  // 2. ADD SUBWAY DATA
-  map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
-  map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
-
-  // 3. LAYER ORDER: Fill -> Outline -> Subway Lines -> Subway Dots -> Subway Labels
+  // 1. ADD NTA LAYERS FIRST (Base Layers)
   map.addLayer({
-    id: 'neighborhood-fill', type: 'fill', source: 'neighborhoods',
-    paint: { 'fill-opacity': 0.6 } // Color logic is handled in choropleth function
+    id: 'neighborhood-fill',
+    type: 'fill',
+    source: 'neighborhoods',
+    paint: {
+      'fill-color': 'rgba(0,0,0,0)', // Start transparent
+      'fill-opacity': 0.7
+    }
   });
 
-  // RESTORE: Neighborhood boundaries
+  // 2. RESTORE: Draw lines between all NTA areas
   map.addLayer({
-    id: 'neighborhood-outline', type: 'line', source: 'neighborhoods',
-    paint: { 'line-color': '#333', 'line-width': 1.5, 'line-opacity': 0.8 }
+    id: 'neighborhood-outline',
+    type: 'line',
+    source: 'neighborhoods',
+    paint: {
+      'line-color': '#444',
+      'line-width': 0.8,
+      'line-opacity': 0.5
+    }
   });
 
+  // Now process the Airtable data and color the map
+  createZipBasedChoropleth(data, geoData, artistGroups);
+});
+
+function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
+  // ... (keep your existing countsMap logic) ...
+  
+  const safeMax = Math.max(...neighborhoods.features.map(f => f.properties.artistCount)) || 1;
+
+  // 3. APPLY THE COLOR TO THE FILL LAYER
+  map.setPaintProperty('neighborhood-fill', 'fill-color', [
+    'interpolate',
+    ['exponential', 0.5],
+    ['get', 'artistCount'],
+    0, '#f2f0f7',
+    safeMax * 0.5, '#9e9ac8',
+    safeMax, '#54278f'
+  ]);
+
+  // 4. ADD SUBWAY LAYERS LAST (Ensures they are on top of everything)
+  if (!map.getSource('subway-lines')) {
+    map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
+    map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
+  }
+
   map.addLayer({
-    id: 'subway-lines-layer', type: 'line', source: 'subway-lines',
+    id: 'subway-lines-layer',
+    type: 'line',
+    source: 'subway-lines',
     paint: {
       'line-width': 2,
       'line-color': ['match', ['get', 'rt_symbol'], '1', '#EE352E', '2', '#EE352E', '3', '#EE352E', '4', '#00933C', '5', '#00933C', '6', '#00933C', 'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD', 'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319', 'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A', 'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633', '7', '#B933AD', '#000000']
@@ -94,26 +128,32 @@ map.on('load', async () => {
   });
 
   map.addLayer({
-    id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-    paint: { 'circle-radius': 3.5, 'circle-color': '#fff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
+    id: 'subway-stations-stops',
+    type: 'circle',
+    source: 'subway-stops',
+    paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
   });
 
-  // FIX: Subway Labels (Ensured to be at the very top)
   map.addLayer({
-    id: 'subway-labels', type: 'symbol', source: 'subway-stops',
-    minzoom: 12.5,
+    id: 'subway-labels',
+    type: 'symbol',
+    source: 'subway-stops',
     layout: {
       'text-field': ['get', 'stop_name'],
-      'text-font': ['Open Sans Bold', 'Arial Unicode MS Regular'],
+      'text-font': ['Arial Unicode MS Regular'], // Standard Mapbox font stack
       'text-size': 11,
       'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
       'text-radial-offset': 0.8
     },
-    paint: { 'text-color': '#000', 'text-halo-color': '#fff', 'text-halo-width': 2 }
+    paint: {
+      'text-color': '#333',
+      'text-halo-color': '#fff',
+      'text-halo-width': 2
+    }
   });
 
-  createZipBasedChoropleth(data, geoData, artistGroups);
-});
+  setupSearch(data);
+}
 
 function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
@@ -223,59 +263,43 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn, safeMax) {
 }
 
 // 3. SEARCH BY NAME, NTA, AND DISCIPLINE
+// --- FIX: Single-click Search ---
 function setupSearch(data) {
   const searchInput = document.getElementById('search-input');
   const resultsBox = document.getElementById('search-results');
-  let selectedIndex = -1;
-
-  searchInput.addEventListener('keydown', (e) => {
-    const items = resultsBox.querySelectorAll('.search-item');
-    if (e.key === 'ArrowDown') {
-      selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-      updateSelection(items);
-    } else if (e.key === 'ArrowUp') {
-      selectedIndex = Math.max(selectedIndex - 1, 0);
-      updateSelection(items);
-    } else if (e.key === 'Enter' && selectedIndex > -1) {
-      items[selectedIndex].click();
-    }
-  });
-
-  function updateSelection(items) {
-    items.forEach((el, i) => el.classList.toggle('highlighted', i === selectedIndex));
-  }
 
   searchInput.addEventListener('input', (e) => {
     const val = e.target.value.toLowerCase();
     resultsBox.innerHTML = '';
-    selectedIndex = -1;
     if (!val) return;
 
     const matches = data.filter(r => {
-      const name = (r["Name"] || r["Org Name"] || "").toLowerCase();
-      const disciplines = String(r["Artistic Disciplines"] || "").toLowerCase();
-      return name.includes(val) || disciplines.includes(val);
+      const nameMatch = (r["Name"] || r["Org Name"] || "").toLowerCase().includes(val);
+      const disciplineMatch = String(r["Artistic Disciplines"] || "").toLowerCase().includes(val);
+      return nameMatch || disciplineMatch;
     }).slice(0, 10);
 
     matches.forEach(m => {
       const div = document.createElement('div');
       div.className = 'search-item';
-      div.style = "padding:10px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff;";
-      // Updated display to avoid Softr ID showing
-      div.innerHTML = `<strong>${m["Name"] || m["Org Name"] || "Artist"}</strong><br><span style="font-size:11px; color:#666;">${m["Artistic Disciplines"] || ""}</span>`;
+      div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
+      div.innerHTML = `<b>${m["Name"] || m["Org Name"] || "Unnamed"}</b><br><small>${m["Artistic Disciplines"] || ""}</small>`;
       
-      div.onclick = () => {
+      // Use mousedown instead of click to fix the double-click issue
+      div.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // Prevents focus loss before click
         let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
         const hoodName = ZIP_TO_NTA[zip];
         if (hoodName) {
            const feat = geoData.features.find(f => f.properties.ntaname === hoodName);
            if (feat) {
-             map.flyTo({ center: turf.center(feat).geometry.coordinates, zoom: 14.5 });
+             const center = turf.center(feat).geometry.coordinates;
+             map.flyTo({ center, zoom: 14.5 });
            }
         }
         resultsBox.innerHTML = '';
         searchInput.value = '';
-      };
+      });
       resultsBox.appendChild(div);
     });
   });
