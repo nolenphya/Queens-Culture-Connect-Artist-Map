@@ -34,7 +34,7 @@ const ZIP_TO_NTA = {
   "11377": "Woodside", "11378": "Maspeth", "11379": "Middle Village", "11385": "Ridgewood",
   "11411": "Cambria Heights", "11412": "St. Albans", "11413": "Laurelton", "11414": "Howard Beach-Lindenwood",
   "11415": "Kew Gardens", "11416": "Ozone Park", "11417": "Ozone Park", "11418": "Richmond Hill",
-  "11419": "South Richmond Hill", "11420": "South Ozone Park", "11421": "Woodhaven", "11422": "Rosedale",
+  "11419": "South Richmond Hill", "11420": "South Ozone Park", "11421": "Point", "11422": "Rosedale",
   "11423": "Hollis", "11426": "Bellerose", "11427": "Queens Village", "11428": "Queens Village",
   "11429": "Queens Village", "11432": "Jamaica Estates-Holliswood", "11433": "Jamaica", "11434": "South Jamaica",
   "11435": "Jamaica Hills-Briarwood", "11436": "South Jamaica", "11691": "Far Rockaway-Bayswater",
@@ -66,33 +66,24 @@ map.on('load', async () => {
   const data = records.map(r => ({ id: r.id, ...r.fields }));
   geoData = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson').then(res => res.json());
 
-  // 1. ADD NTA SOURCE
   map.addSource('neighborhoods', { type: 'geojson', data: geoData });
 
-  // 2. ADD BASE FILL LAYER (Color logic updated in createZipBasedChoropleth)
+  // 1. Fill Layer
   map.addLayer({
     id: 'neighborhood-fill',
     type: 'fill',
     source: 'neighborhoods',
-    paint: {
-      'fill-color': '#f2f0f7', 
-      'fill-opacity': 0.7
-    }
+    paint: { 'fill-color': '#f2f0f7', 'fill-opacity': 0.7 }
   });
 
-  // 3. ADD PERMANENT OUTLINES (Visible even for 0-artist areas)
+  // 2. Outline Layer
   map.addLayer({
     id: 'neighborhood-outline',
     type: 'line',
     source: 'neighborhoods',
-    paint: {
-      'line-color': '#444',
-      'line-width': 0.8,
-      'line-opacity': 0.4
-    }
+    paint: { 'line-color': '#444', 'line-width': 0.8, 'line-opacity': 0.4 }
   });
 
-  // Process data and apply coloring
   createZipBasedChoropleth(data, geoData, artistGroups);
 });
 
@@ -118,18 +109,25 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   
   const safeMax = Math.max(...neighborhoods.features.map(f => f.properties.artistCount)) || 1;
 
-  // RE-APPLY CHOROPLETH COLOR LOGIC
-  map.setPaintProperty('neighborhood-fill', 'fill-color', [
-    'interpolate',
-    ['exponential', 0.5],
-    ['get', 'artistCount'],
-    0, '#f2f0f7',
-    1, '#dadaeb',
-    safeMax * 0.5, '#9e9ac8',
-    safeMax, '#54278f'
-  ]);
+  // FIX: Build strictly ascending steps for the interpolate expression to avoid the Error
+  let colorExpression = [
+    'interpolate', ['linear'], ['get', 'artistCount'],
+    0, '#f2f0f7'
+  ];
+  
+  if (safeMax > 1) {
+    colorExpression.push(1, '#dadaeb');
+    if (safeMax > 2) {
+      colorExpression.push(Math.floor(safeMax * 0.5), '#9e9ac8');
+    }
+    colorExpression.push(safeMax, '#54278f');
+  } else {
+    // If only 1 artist max, just go from 0 to 1
+    colorExpression.push(1, '#54278f');
+  }
 
-  // ADD SUBWAY LAYERS LAST (Ensures they are visually on top)
+  map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
+
   addSubwayLayers();
 
   const showPopup = (name, lngLat) => {
@@ -146,11 +144,10 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
           const displayName = a["Name"] || a["Org Name"] || "Unnamed Artist";
           const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
           const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
-          return `
-            <div style="margin-top:8px;">
-              <div style="font-weight:bold; font-size:14px;">${displayName}</div>
-              <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
-            </div>`;
+          return `<div style="margin-top:8px;">
+                    <div style="font-weight:bold; font-size:14px;">${displayName}</div>
+                    <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
+                  </div>`;
         }).join('')}
       </div>`;
     new mapboxgl.Popup().setLngLat(lngLat).setHTML(html).addTo(map);
@@ -171,60 +168,49 @@ function addSubwayLayers() {
   map.addLayer({
     id: 'subway-lines-layer', type: 'line', source: 'subway-lines',
     paint: {
-      'line-width': 2,
+      'line-width': 1.5,
       'line-color': ['match', ['get', 'rt_symbol'], '1', '#EE352E', '2', '#EE352E', '3', '#EE352E', '4', '#00933C', '5', '#00933C', '6', '#00933C', 'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD', 'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319', 'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A', 'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633', '7', '#B933AD', '#000000']
     }
   });
 
   map.addLayer({
     id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-    paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
+    paint: { 'circle-radius': 3, 'circle-color': '#fff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
   });
 
   map.addLayer({
     id: 'subway-labels', type: 'symbol', source: 'subway-stops',
+    minzoom: 13,
     layout: {
       'text-field': ['get', 'stop_name'],
       'text-font': ['Arial Unicode MS Regular'],
-      'text-size': 11,
+      'text-size': 10,
       'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
       'text-radial-offset': 0.8
     },
-    paint: { 'text-color': '#333', 'text-halo-color': '#fff', 'text-halo-width': 2 }
+    paint: { 'text-color': '#444', 'text-halo-color': '#fff', 'text-halo-width': 1.5 }
   });
 }
 
 function updateSidebarAndLegend(groups, neighborhoods, popupFn, safeMax) {
   const container = document.getElementById('legend');
-  
   let colorHtml = `
     <div style="margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #eee;">
       <h4 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:#666;">Artist Density</h4>
       <div style="display:flex; align-items:center; justify-content:space-between; padding-right:10px;">
-        <div style="display:flex; flex-direction:column; align-items:center;">
-          <div style="width:20px; height:20px; background:#f2f0f7; border:1px solid #ccc;"></div>
-          <span style="font-size:10px;">0</span>
-        </div>
-        <div style="display:flex; flex-direction:column; align-items:center;">
-          <div style="width:20px; height:20px; background:#9e9ac8; border:1px solid #ccc;"></div>
-          <span style="font-size:10px;">${Math.round(safeMax/2)}</span>
-        </div>
-        <div style="display:flex; flex-direction:column; align-items:center;">
-          <div style="width:20px; height:20px; background:#54278f; border:1px solid #ccc;"></div>
-          <span style="font-size:10px;">${safeMax}</span>
-        </div>
+        <div style="display:flex; flex-direction:column; align-items:center;"><div style="width:20px; height:20px; background:#f2f0f7; border:1px solid #ccc;"></div><span style="font-size:10px;">0</span></div>
+        <div style="display:flex; flex-direction:column; align-items:center;"><div style="width:20px; height:20px; background:#9e9ac8; border:1px solid #ccc;"></div><span style="font-size:10px;">${Math.round(safeMax/2)}</span></div>
+        <div style="display:flex; flex-direction:column; align-items:center;"><div style="width:20px; height:20px; background:#54278f; border:1px solid #ccc;"></div><span style="font-size:10px;">${safeMax}</span></div>
       </div>
     </div>
     <h3>Artist Neighborhoods</h3>
   `;
-  
   container.innerHTML = colorHtml;
 
   Object.keys(groups).sort().forEach(name => {
     const item = document.createElement('div');
     item.style = "cursor:pointer; padding:8px; border-bottom:1px solid #eee; font-size:13px; background:#fff;";
     item.innerHTML = `<strong>${name}</strong> (${groups[name].length})`;
-
     item.onclick = () => {
       const feature = neighborhoods.features.find(f => f.properties.ntaname === name);
       if (feature) {
@@ -240,10 +226,12 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn, safeMax) {
 function setupSearch(data) {
   const searchInput = document.getElementById('search-input');
   const resultsBox = document.getElementById('search-results');
+  let currentFocus = -1;
 
   searchInput.addEventListener('input', (e) => {
     const val = e.target.value.toLowerCase();
     resultsBox.innerHTML = '';
+    currentFocus = -1;
     if (!val) return;
 
     const matches = data.filter(r => {
@@ -252,7 +240,7 @@ function setupSearch(data) {
       return nameMatch || disciplineMatch;
     }).slice(0, 10);
 
-    matches.forEach(m => {
+    matches.forEach((m, index) => {
       const div = document.createElement('div');
       div.className = 'search-item';
       div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
@@ -260,24 +248,57 @@ function setupSearch(data) {
       
       div.addEventListener('mousedown', (e) => {
         e.preventDefault(); 
-        let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
-        const hoodName = ZIP_TO_NTA[zip];
-        if (hoodName) {
-           const feat = geoData.features.find(f => f.properties.ntaname === hoodName);
-           if (feat) {
-             const center = turf.center(feat).geometry.coordinates;
-             map.flyTo({ center, zoom: 14.5 });
-           }
-        }
-        resultsBox.innerHTML = '';
-        searchInput.value = '';
+        selectSearchResult(m);
       });
       resultsBox.appendChild(div);
     });
   });
+
+  searchInput.addEventListener('keydown', (e) => {
+    const items = resultsBox.getElementsByClassName('search-item');
+    if (e.key === "ArrowDown") {
+      currentFocus++;
+      addActive(items);
+    } else if (e.key === "ArrowUp") {
+      currentFocus--;
+      addActive(items);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (currentFocus > -1 && items[currentFocus]) {
+        items[currentFocus].dispatchEvent(new Event('mousedown'));
+      }
+    }
+  });
+
+  function addActive(items) {
+    if (!items) return false;
+    removeActive(items);
+    if (currentFocus >= items.length) currentFocus = 0;
+    if (currentFocus < 0) currentFocus = (items.length - 1);
+    items[currentFocus].style.backgroundColor = "#e9ecef";
+  }
+
+  function removeActive(items) {
+    for (let i = 0; i < items.length; i++) {
+      items[i].style.backgroundColor = "#fff";
+    }
+  }
+
+  function selectSearchResult(m) {
+    let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
+    const hoodName = ZIP_TO_NTA[zip];
+    if (hoodName && geoData) {
+       const feat = geoData.features.find(f => f.properties.ntaname === hoodName);
+       if (feat) {
+         const center = turf.center(feat).geometry.coordinates;
+         map.flyTo({ center, zoom: 14.5 });
+       }
+    }
+    resultsBox.innerHTML = '';
+    searchInput.value = '';
+  }
 }
 
-// Button and Overlay Logic
 document.addEventListener('DOMContentLoaded', () => {
   const legendPanel = document.getElementById('legend-panel');
   const toggleBtn = document.getElementById('legend-toggle');
@@ -292,19 +313,16 @@ document.addEventListener('DOMContentLoaded', () => {
       toggleBtn.textContent = legendPanel.classList.contains('collapsed') ? 'Show' : 'Hide';
     });
   }
-
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       map.flyTo({ center: [-73.94, 40.73], zoom: 11 });
     });
   }
-
   if (infoButton) {
     infoButton.addEventListener('click', () => {
       mapGuideOverlay.style.display = 'flex';
     });
   }
-
   if (mapGuideClose) {
     mapGuideClose.addEventListener('click', () => {
       mapGuideOverlay.style.display = 'none';
