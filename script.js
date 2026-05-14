@@ -66,21 +66,21 @@ map.on('load', async () => {
   const data = records.map(r => ({ id: r.id, ...r.fields }));
   geoData = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson').then(res => res.json());
 
-  // Add the NTA source once
+  // 1. ADD NTA SOURCE
   map.addSource('neighborhoods', { type: 'geojson', data: geoData });
 
-  // 1. ADD NTA LAYERS FIRST (Base Layers)
+  // 2. ADD BASE FILL LAYER (Color logic updated in createZipBasedChoropleth)
   map.addLayer({
     id: 'neighborhood-fill',
     type: 'fill',
     source: 'neighborhoods',
     paint: {
-      'fill-color': 'rgba(0,0,0,0)', // Start transparent
+      'fill-color': '#f2f0f7', 
       'fill-opacity': 0.7
     }
   });
 
-  // 2. RESTORE: Draw lines between all NTA areas
+  // 3. ADD PERMANENT OUTLINES (Visible even for 0-artist areas)
   map.addLayer({
     id: 'neighborhood-outline',
     type: 'line',
@@ -88,72 +88,13 @@ map.on('load', async () => {
     paint: {
       'line-color': '#444',
       'line-width': 0.8,
-      'line-opacity': 0.5
+      'line-opacity': 0.4
     }
   });
 
-  // Now process the Airtable data and color the map
+  // Process data and apply coloring
   createZipBasedChoropleth(data, geoData, artistGroups);
 });
-
-function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
-  // ... (keep your existing countsMap logic) ...
-  
-  const safeMax = Math.max(...neighborhoods.features.map(f => f.properties.artistCount)) || 1;
-
-  // 3. APPLY THE COLOR TO THE FILL LAYER
-  map.setPaintProperty('neighborhood-fill', 'fill-color', [
-    'interpolate',
-    ['exponential', 0.5],
-    ['get', 'artistCount'],
-    0, '#f2f0f7',
-    safeMax * 0.5, '#9e9ac8',
-    safeMax, '#54278f'
-  ]);
-
-  // 4. ADD SUBWAY LAYERS LAST (Ensures they are on top of everything)
-  if (!map.getSource('subway-lines')) {
-    map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
-    map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
-  }
-
-  map.addLayer({
-    id: 'subway-lines-layer',
-    type: 'line',
-    source: 'subway-lines',
-    paint: {
-      'line-width': 2,
-      'line-color': ['match', ['get', 'rt_symbol'], '1', '#EE352E', '2', '#EE352E', '3', '#EE352E', '4', '#00933C', '5', '#00933C', '6', '#00933C', 'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD', 'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319', 'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A', 'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633', '7', '#B933AD', '#000000']
-    }
-  });
-
-  map.addLayer({
-    id: 'subway-stations-stops',
-    type: 'circle',
-    source: 'subway-stops',
-    paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
-  });
-
-  map.addLayer({
-    id: 'subway-labels',
-    type: 'symbol',
-    source: 'subway-stops',
-    layout: {
-      'text-field': ['get', 'stop_name'],
-      'text-font': ['Arial Unicode MS Regular'], // Standard Mapbox font stack
-      'text-size': 11,
-      'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-      'text-radial-offset': 0.8
-    },
-    paint: {
-      'text-color': '#333',
-      'text-halo-color': '#fff',
-      'text-halo-width': 2
-    }
-  });
-
-  setupSearch(data);
-}
 
 function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
@@ -171,22 +112,25 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     }
   });
 
-  neighborhoods.features.forEach(f => { f.properties.artistCount = countsMap[f.properties.ntaname] || 0; });
+  neighborhoods.features.forEach(f => { 
+    f.properties.artistCount = countsMap[f.properties.ntaname] || 0; 
+  });
+  
   const safeMax = Math.max(...neighborhoods.features.map(f => f.properties.artistCount)) || 1;
 
-  if (!map.getSource('neighborhoods')) {
-    map.addSource('neighborhoods', { type: 'geojson', data: neighborhoods });
-  }
+  // RE-APPLY CHOROPLETH COLOR LOGIC
+  map.setPaintProperty('neighborhood-fill', 'fill-color', [
+    'interpolate',
+    ['exponential', 0.5],
+    ['get', 'artistCount'],
+    0, '#f2f0f7',
+    1, '#dadaeb',
+    safeMax * 0.5, '#9e9ac8',
+    safeMax, '#54278f'
+  ]);
 
-  if (!map.getLayer('neighborhood-fill')) {
-    map.addLayer({
-      id: 'neighborhood-fill', type: 'fill', source: 'neighborhoods',
-      paint: {
-        'fill-color': ['interpolate', ['exponential', 0.5], ['get', 'artistCount'], 0, '#f2f0f7', safeMax * 0.5, '#9e9ac8', safeMax, '#54278f'],
-        'fill-opacity': 0.7
-      }
-    }, 'subway-lines-layer');
-  }
+  // ADD SUBWAY LAYERS LAST (Ensures they are visually on top)
+  addSubwayLayers();
 
   const showPopup = (name, lngLat) => {
     const artists = artistGroups[name] || [];
@@ -218,10 +162,41 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   setupSearch(data);
 }
 
+function addSubwayLayers() {
+  if (!map.getSource('subway-lines')) {
+    map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
+    map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
+  }
+
+  map.addLayer({
+    id: 'subway-lines-layer', type: 'line', source: 'subway-lines',
+    paint: {
+      'line-width': 2,
+      'line-color': ['match', ['get', 'rt_symbol'], '1', '#EE352E', '2', '#EE352E', '3', '#EE352E', '4', '#00933C', '5', '#00933C', '6', '#00933C', 'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD', 'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319', 'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A', 'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633', '7', '#B933AD', '#000000']
+    }
+  });
+
+  map.addLayer({
+    id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
+    paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#000' }
+  });
+
+  map.addLayer({
+    id: 'subway-labels', type: 'symbol', source: 'subway-stops',
+    layout: {
+      'text-field': ['get', 'stop_name'],
+      'text-font': ['Arial Unicode MS Regular'],
+      'text-size': 11,
+      'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+      'text-radial-offset': 0.8
+    },
+    paint: { 'text-color': '#333', 'text-halo-color': '#fff', 'text-halo-width': 2 }
+  });
+}
+
 function updateSidebarAndLegend(groups, neighborhoods, popupFn, safeMax) {
   const container = document.getElementById('legend');
   
-  // 1. ADD COLOR SCALE TO TOP OF LEGEND
   let colorHtml = `
     <div style="margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #eee;">
       <h4 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:#666;">Artist Density</h4>
@@ -262,8 +237,6 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn, safeMax) {
   });
 }
 
-// 3. SEARCH BY NAME, NTA, AND DISCIPLINE
-// --- FIX: Single-click Search ---
 function setupSearch(data) {
   const searchInput = document.getElementById('search-input');
   const resultsBox = document.getElementById('search-results');
@@ -285,9 +258,8 @@ function setupSearch(data) {
       div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
       div.innerHTML = `<b>${m["Name"] || m["Org Name"] || "Unnamed"}</b><br><small>${m["Artistic Disciplines"] || ""}</small>`;
       
-      // Use mousedown instead of click to fix the double-click issue
       div.addEventListener('mousedown', (e) => {
-        e.preventDefault(); // Prevents focus loss before click
+        e.preventDefault(); 
         let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
         const hoodName = ZIP_TO_NTA[zip];
         if (hoodName) {
@@ -305,10 +277,14 @@ function setupSearch(data) {
   });
 }
 
+// Button and Overlay Logic
 document.addEventListener('DOMContentLoaded', () => {
   const legendPanel = document.getElementById('legend-panel');
   const toggleBtn = document.getElementById('legend-toggle');
   const resetBtn = document.getElementById('reset-legend');
+  const infoButton = document.getElementById('info-button');
+  const mapGuideOverlay = document.getElementById('map-guide-overlay');
+  const mapGuideClose = document.getElementById('map-guide-close');
 
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
@@ -320,6 +296,18 @@ document.addEventListener('DOMContentLoaded', () => {
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       map.flyTo({ center: [-73.94, 40.73], zoom: 11 });
+    });
+  }
+
+  if (infoButton) {
+    infoButton.addEventListener('click', () => {
+      mapGuideOverlay.style.display = 'flex';
+    });
+  }
+
+  if (mapGuideClose) {
+    mapGuideClose.addEventListener('click', () => {
+      mapGuideOverlay.style.display = 'none';
     });
   }
 });
