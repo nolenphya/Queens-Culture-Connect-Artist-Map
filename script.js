@@ -34,7 +34,7 @@ const ZIP_TO_NTA = {
   "11377": "Woodside", "11378": "Maspeth", "11379": "Middle Village", "11385": "Ridgewood",
   "11411": "Cambria Heights", "11412": "St. Albans", "11413": "Laurelton", "11414": "Howard Beach-Lindenwood",
   "11415": "Kew Gardens", "11416": "Ozone Park", "11417": "Ozone Park", "11418": "Richmond Hill",
-  "11419": "South Richmond Hill", "11420": "South Ozone Park", "11421": "Point", "11422": "Rosedale",
+  "11419": "South Richmond Hill", "11420": "South Ozone Park", "11421": "Woodhaven", "11422": "Rosedale",
   "11423": "Hollis", "11426": "Bellerose", "11427": "Queens Village", "11428": "Queens Village",
   "11429": "Queens Village", "11432": "Jamaica Estates-Holliswood", "11433": "Jamaica", "11434": "South Jamaica",
   "11435": "Jamaica Hills-Briarwood", "11436": "South Jamaica", "11691": "Far Rockaway-Bayswater",
@@ -68,20 +68,27 @@ map.on('load', async () => {
 
   map.addSource('neighborhoods', { type: 'geojson', data: geoData });
 
-  // 1. Fill Layer
+  // 1. ADD FILL LAYER (Initially Transparent)
   map.addLayer({
     id: 'neighborhood-fill',
     type: 'fill',
     source: 'neighborhoods',
-    paint: { 'fill-color': '#f2f0f7', 'fill-opacity': 0.7 }
+    paint: {
+      'fill-color': 'rgba(242, 240, 247, 0.5)', // Default very light faint purple
+      'fill-opacity': 0.7
+    }
   });
 
-  // 2. Outline Layer
+  // 2. ADD OUTLINES (Always Visible)
   map.addLayer({
     id: 'neighborhood-outline',
     type: 'line',
     source: 'neighborhoods',
-    paint: { 'line-color': '#444', 'line-width': 0.8, 'line-opacity': 0.4 }
+    paint: {
+      'line-color': '#444',
+      'line-width': 0.8,
+      'line-opacity': 0.3
+    }
   });
 
   createZipBasedChoropleth(data, geoData, artistGroups);
@@ -107,23 +114,18 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     f.properties.artistCount = countsMap[f.properties.ntaname] || 0; 
   });
   
-  const safeMax = Math.max(...neighborhoods.features.map(f => f.properties.artistCount)) || 1;
+  const safeMax = Math.max(...Object.values(countsMap)) || 1;
 
-  // FIX: Build strictly ascending steps for the interpolate expression to avoid the Error
-  let colorExpression = [
+  // FIX: Dynamic color expression to avoid the "Dark Shape" bug
+  const colorExpression = [
     'interpolate', ['linear'], ['get', 'artistCount'],
-    0, '#f2f0f7'
+    0, '#f2f0f7',         // No artists
+    1, '#dadaeb'          // 1 artist
   ];
-  
+
   if (safeMax > 1) {
-    colorExpression.push(1, '#dadaeb');
-    if (safeMax > 2) {
-      colorExpression.push(Math.floor(safeMax * 0.5), '#9e9ac8');
-    }
+    colorExpression.push(safeMax * 0.5, '#9e9ac8');
     colorExpression.push(safeMax, '#54278f');
-  } else {
-    // If only 1 artist max, just go from 0 to 1
-    colorExpression.push(1, '#54278f');
   }
 
   map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
@@ -143,10 +145,9 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
         ${artists.map(a => {
           const displayName = a["Name"] || a["Org Name"] || "Unnamed Artist";
           const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
-          const finalUrl = `${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end`;
           return `<div style="margin-top:8px;">
                     <div style="font-weight:bold; font-size:14px;">${displayName}</div>
-                    <a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
+                    <a href="${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
                   </div>`;
         }).join('')}
       </div>`;
@@ -154,7 +155,6 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   };
 
   map.on('click', 'neighborhood-fill', (e) => showPopup(e.features[0].properties.ntaname, e.lngLat));
-
   updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, safeMax);
   setupSearch(data);
 }
@@ -175,7 +175,7 @@ function addSubwayLayers() {
 
   map.addLayer({
     id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-    paint: { 'circle-radius': 3, 'circle-color': '#fff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
+    paint: { 'circle-radius': 3.5, 'circle-color': '#fff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
   });
 
   map.addLayer({
@@ -194,28 +194,28 @@ function addSubwayLayers() {
 
 function updateSidebarAndLegend(groups, neighborhoods, popupFn, safeMax) {
   const container = document.getElementById('legend');
-  let colorHtml = `
+  container.innerHTML = `
     <div style="margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #eee;">
       <h4 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:#666;">Artist Density</h4>
       <div style="display:flex; align-items:center; justify-content:space-between; padding-right:10px;">
-        <div style="display:flex; flex-direction:column; align-items:center;"><div style="width:20px; height:20px; background:#f2f0f7; border:1px solid #ccc;"></div><span style="font-size:10px;">0</span></div>
-        <div style="display:flex; flex-direction:column; align-items:center;"><div style="width:20px; height:20px; background:#9e9ac8; border:1px solid #ccc;"></div><span style="font-size:10px;">${Math.round(safeMax/2)}</span></div>
-        <div style="display:flex; flex-direction:column; align-items:center;"><div style="width:20px; height:20px; background:#54278f; border:1px solid #ccc;"></div><span style="font-size:10px;">${safeMax}</span></div>
+        <div style="text-align:center"><div style="width:20px; height:20px; background:#f2f0f7; border:1px solid #ccc;"></div><span style="font-size:10px;">0</span></div>
+        <div style="text-align:center"><div style="width:20px; height:20px; background:#9e9ac8; border:1px solid #ccc;"></div><span style="font-size:10px;">${Math.round(safeMax/2)}</span></div>
+        <div style="text-align:center"><div style="width:20px; height:20px; background:#54278f; border:1px solid #ccc;"></div><span style="font-size:10px;">${safeMax}</span></div>
       </div>
     </div>
     <h3>Artist Neighborhoods</h3>
   `;
-  container.innerHTML = colorHtml;
 
   Object.keys(groups).sort().forEach(name => {
     const item = document.createElement('div');
-    item.style = "cursor:pointer; padding:8px; border-bottom:1px solid #eee; font-size:13px; background:#fff;";
+    item.className = 'neighborhood-item';
+    item.style = "cursor:pointer; padding:8px; border-bottom:1px solid #eee; font-size:13px;";
     item.innerHTML = `<strong>${name}</strong> (${groups[name].length})`;
     item.onclick = () => {
-      const feature = neighborhoods.features.find(f => f.properties.ntaname === name);
-      if (feature) {
-        const center = turf.center(feature).geometry.coordinates;
-        map.flyTo({ center: center, zoom: 13.5 });
+      const feat = neighborhoods.features.find(f => f.properties.ntaname === name);
+      if (feat) {
+        const center = turf.center(feat).geometry.coordinates;
+        map.flyTo({ center, zoom: 13.5 });
         popupFn(name, center);
       }
     };
@@ -228,27 +228,26 @@ function setupSearch(data) {
   const resultsBox = document.getElementById('search-results');
   let currentFocus = -1;
 
-  searchInput.addEventListener('input', (e) => {
-    const val = e.target.value.toLowerCase();
+  searchInput.addEventListener('input', () => {
+    const val = searchInput.value.toLowerCase();
     resultsBox.innerHTML = '';
     currentFocus = -1;
     if (!val) return;
 
     const matches = data.filter(r => {
-      const nameMatch = (r["Name"] || r["Org Name"] || "").toLowerCase().includes(val);
-      const disciplineMatch = String(r["Artistic Disciplines"] || "").toLowerCase().includes(val);
-      return nameMatch || disciplineMatch;
+      const name = (r["Name"] || r["Org Name"] || "").toLowerCase();
+      const disc = String(r["Artistic Disciplines"] || "").toLowerCase();
+      return name.includes(val) || disc.includes(val);
     }).slice(0, 10);
 
-    matches.forEach((m, index) => {
+    matches.forEach((m, i) => {
       const div = document.createElement('div');
       div.className = 'search-item';
-      div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
-      div.innerHTML = `<b>${m["Name"] || m["Org Name"] || "Unnamed"}</b><br><small>${m["Artistic Disciplines"] || ""}</small>`;
-      
+      div.style = "padding:10px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
+      div.innerHTML = `<b>${m["Name"] || m["Org Name"]}</b><br><small>${m["Artistic Disciplines"] || ""}</small>`;
       div.addEventListener('mousedown', (e) => {
-        e.preventDefault(); 
-        selectSearchResult(m);
+        e.preventDefault();
+        navigateToArtist(m);
       });
       resultsBox.appendChild(div);
     });
@@ -257,75 +256,48 @@ function setupSearch(data) {
   searchInput.addEventListener('keydown', (e) => {
     const items = resultsBox.getElementsByClassName('search-item');
     if (e.key === "ArrowDown") {
-      currentFocus++;
-      addActive(items);
+      currentFocus = (currentFocus + 1) % items.length;
+      highlight(items);
     } else if (e.key === "ArrowUp") {
-      currentFocus--;
-      addActive(items);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (currentFocus > -1 && items[currentFocus]) {
-        items[currentFocus].dispatchEvent(new Event('mousedown'));
-      }
+      currentFocus = (currentFocus - 1 + items.length) % items.length;
+      highlight(items);
+    } else if (e.key === "Enter" && currentFocus > -1) {
+      items[currentFocus].dispatchEvent(new Event('mousedown'));
     }
   });
 
-  function addActive(items) {
-    if (!items) return false;
-    removeActive(items);
-    if (currentFocus >= items.length) currentFocus = 0;
-    if (currentFocus < 0) currentFocus = (items.length - 1);
-    items[currentFocus].style.backgroundColor = "#e9ecef";
+  function highlight(items) {
+    Array.from(items).forEach((el, i) => el.style.background = i === currentFocus ? "#f0f0f0" : "#fff");
   }
 
-  function removeActive(items) {
-    for (let i = 0; i < items.length; i++) {
-      items[i].style.backgroundColor = "#fff";
-    }
-  }
-
-  function selectSearchResult(m) {
+  function navigateToArtist(m) {
     let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
-    const hoodName = ZIP_TO_NTA[zip];
-    if (hoodName && geoData) {
-       const feat = geoData.features.find(f => f.properties.ntaname === hoodName);
-       if (feat) {
-         const center = turf.center(feat).geometry.coordinates;
-         map.flyTo({ center, zoom: 14.5 });
-       }
+    const hood = ZIP_TO_NTA[zip];
+    if (hood && geoData) {
+      const feat = geoData.features.find(f => f.properties.ntaname === hood);
+      if (feat) map.flyTo({ center: turf.center(feat).geometry.coordinates, zoom: 14.5 });
     }
     resultsBox.innerHTML = '';
     searchInput.value = '';
   }
 }
 
+// Button Listeners
 document.addEventListener('DOMContentLoaded', () => {
-  const legendPanel = document.getElementById('legend-panel');
   const toggleBtn = document.getElementById('legend-toggle');
   const resetBtn = document.getElementById('reset-legend');
-  const infoButton = document.getElementById('info-button');
-  const mapGuideOverlay = document.getElementById('map-guide-overlay');
-  const mapGuideClose = document.getElementById('map-guide-close');
+  const infoBtn = document.getElementById('info-button');
+  const overlay = document.getElementById('map-guide-overlay');
 
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      legendPanel.classList.toggle('collapsed');
-      toggleBtn.textContent = legendPanel.classList.contains('collapsed') ? 'Show' : 'Hide';
-    });
-  }
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      map.flyTo({ center: [-73.94, 40.73], zoom: 11 });
-    });
-  }
-  if (infoButton) {
-    infoButton.addEventListener('click', () => {
-      mapGuideOverlay.style.display = 'flex';
-    });
-  }
-  if (mapGuideClose) {
-    mapGuideClose.addEventListener('click', () => {
-      mapGuideOverlay.style.display = 'none';
-    });
+  if (toggleBtn) toggleBtn.addEventListener('click', () => {
+    const panel = document.getElementById('legend-panel');
+    panel.classList.toggle('collapsed');
+    toggleBtn.textContent = panel.classList.contains('collapsed') ? 'Show' : 'Hide';
+  });
+
+  if (resetBtn) resetBtn.addEventListener('click', () => map.flyTo({ center: [-73.94, 40.73], zoom: 11 }));
+  if (infoBtn) infoBtn.addEventListener('click', () => overlay.style.display = 'flex');
+  if (document.getElementById('map-guide-close')) {
+    document.getElementById('map-guide-close').addEventListener('click', () => overlay.style.display = 'none');
   }
 });
