@@ -111,76 +111,36 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     f.properties.artistCount = Number(countsMap[f.properties.ntaname]) || 0; 
   });
   
-const maxArtists = Math.max(...Object.values(countsMap), 1);
+  const maxArtists = Math.max(...Object.values(countsMap), 1);
 
-const stop1 = Math.max(1, Math.ceil(maxArtists * 0.2));
-const stop2 = Math.max(stop1 + 1, Math.ceil(maxArtists * 0.4));
-const stop3 = Math.max(stop2 + 1, Math.ceil(maxArtists * 0.6));
-const stop4 = Math.max(stop3 + 1, Math.ceil(maxArtists * 0.8));
-const stop5 = Math.max(stop4 + 1, maxArtists);
+  // 1. DYNAMIC CALCULATED STOPS (Strictly Ascending)
+  // We use Math.max(prev + 1, ...) to ensure Mapbox never sees duplicate stop values.
+  const stop1 = Math.max(1, Math.ceil(maxArtists * 0.2));
+  const stop2 = Math.max(stop1 + 1, Math.ceil(maxArtists * 0.4));
+  const stop3 = Math.max(stop2 + 1, Math.ceil(maxArtists * 0.6));
+  const stop4 = Math.max(stop3 + 1, Math.ceil(maxArtists * 0.8));
 
-const colorExpression = [
-  'step',
-  ['to-number', ['get', 'artistCount']],
+  const colorExpression = [
+    'step',
+    ['get', 'artistCount'],
+    '#f2f0f7', // 0 artists
+    1,          '#dadaeb', // Band 1: 1 to stop1
+    stop1 + 1,  '#bcbddc', // Band 2
+    stop2 + 1,  '#9e9ac8', // Band 3
+    stop3 + 1,  '#756bb1', // Band 4
+    stop4 + 1,  '#54278f'  // Band 5: High
+  ];
 
-  '#f2f0f7', // 0 artists
-  1, '#dadaeb',
-  3, '#bcbddc',
-  5, '#9e9ac8',
-  8, '#756bb1',
-  12, '#54278f'
-];
-
-map.setPaintProperty(
-  'neighborhood-fill',
-  'fill-color',
-  colorExpression
-);
-
-map.setPaintProperty(
-  'neighborhood-fill',
-  'fill-opacity',
-  0.7
-);
+  map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
+  map.setPaintProperty('neighborhood-fill', 'fill-opacity', 0.7);
   
   addSubwayLayers();
 
-  const showPopup = (name, lngLat) => {
-    const artists = artistGroups[name] || [];
-    const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
-    const DETAIL_SLUG = "/artists-details";
-
-    const html = `
-      <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
-        <h3 style="margin:0 0 5px 0;">${name}</h3>
-        <p><strong>${artists.length}</strong> Artists</p>
-        <hr style="border:0; border-top:1px solid #eee;">
-        ${artists.map(a => {
-          const displayName = a["Name"] || a["Org Name"] || "Unnamed Artist";
-          const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
-          return `<div style="margin-top:8px;">
-                    <div style="font-weight:bold; font-size:14px;">${displayName}</div>
-                    <a href="${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
-                  </div>`;
-        }).join('')}
-      </div>`;
-    new mapboxgl.Popup().setLngLat(lngLat).setHTML(html).addTo(map);
-  };
-
-  // Ensure click listener is explicitly on the fill layer
-  map.on('click', 'neighborhood-fill', (e) => {
-    if (e.features.length > 0) {
-      showPopup(e.features[0].properties.ntaname, e.lngLat);
-    }
-  });
-
-  // Change cursor to pointer on hover
-  map.on('mouseenter', 'neighborhood-fill', () => map.getCanvas().style.cursor = 'pointer');
-  map.on('mouseleave', 'neighborhood-fill', () => map.getCanvas().style.cursor = '');
-
-  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, maxArtists);
+  // Passing the actual calculated stops to the legend function to keep them in sync
+  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, {stop1, stop2, stop3, stop4, maxArtists});
   setupSearch(data);
 }
+
 function setupSearch(data) {
   const input = document.getElementById('search-input');
   const results = document.getElementById('search-results');
@@ -305,20 +265,19 @@ function addSubwayLayers() {
 }
 }
 
-function updateSidebarAndLegend(groups, neighborhoods, popupFn, maxArtists) {
+function updateSidebarAndLegend(groups, neighborhoods, popupFn, stops) {
   const container = document.getElementById('legend');
-  const interval = Math.ceil(maxArtists / 5);
   
   container.innerHTML = `
     <div style="margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #eee;">
       <h4 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:#666;">Artist Count</h4>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#f2f0f7; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">0 Artists</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#dadaeb; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">1 - ${interval}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#bcbddc; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${interval + 1} - ${interval * 2}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#9e9ac8; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${interval * 2 + 1} - ${interval * 3}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#756bb1; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${interval * 3 + 1} - ${interval * 4}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#54278f; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${interval * 4 + 1}+</span></div>
+        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#dadaeb; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">1 - ${stops.stop1}</span></div>
+        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#bcbddc; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${stops.stop1 + 1} - ${stops.stop2}</span></div>
+        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#9e9ac8; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${stops.stop2 + 1} - ${stops.stop3}</span></div>
+        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#756bb1; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${stops.stop3 + 1} - ${stops.stop4}</span></div>
+        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#54278f; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${stops.stop4 + 1}+</span></div>
       </div>
     </div>
     <h3>Neighborhoods</h3>
