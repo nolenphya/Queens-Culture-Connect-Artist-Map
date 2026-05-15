@@ -108,7 +108,7 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   });
 
   neighborhoods.features.forEach(f => { 
-    f.properties.artistCount = countsMap[f.properties.ntaname] || 0; 
+    f.properties.artistCount = Number(countsMap[nta]) || 0;
   });
   
 const maxArtists = Math.max(...Object.values(countsMap), 1);
@@ -120,16 +120,15 @@ const stop4 = Math.max(stop3 + 1, Math.ceil(maxArtists * 0.8));
 const stop5 = Math.max(stop4 + 1, maxArtists);
 
 const colorExpression = [
-  'interpolate',
-  ['linear'],
-  ['get', 'artistCount'],
+  'step',
+  ['to-number', ['get', 'artistCount']],
 
-  0, '#f2f0f7',
-  stop1, '#dadaeb',
-  stop2, '#bcbddc',
-  stop3, '#9e9ac8',
-  stop4, '#756bb1',
-  stop5, '#54278f'
+  '#f2f0f7', // 0 artists
+  1, '#dadaeb',
+  3, '#bcbddc',
+  5, '#9e9ac8',
+  8, '#756bb1',
+  12, '#54278f'
 ];
 
 map.setPaintProperty(
@@ -141,7 +140,7 @@ map.setPaintProperty(
 map.setPaintProperty(
   'neighborhood-fill',
   'fill-opacity',
-  0.75
+  0.7
 );
   
   addSubwayLayers();
