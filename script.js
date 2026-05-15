@@ -111,25 +111,32 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     f.properties.artistCount = countsMap[f.properties.ntaname] || 0; 
   });
   
-  const maxArtists = Math.max(...Object.values(countsMap), 1);
-
-const interval = Math.max(1, Math.ceil(maxArtists / 5));
+const maxArtists = Math.max(...Object.values(countsMap), 1);
 
 const colorExpression = [
-  'step',
+  'interpolate',
+  ['linear'],
   ['get', 'artistCount'],
-  '#f2f0f7',
 
-  1, '#dadaeb',
-  interval + 1, '#bcbddc',
-  interval * 2 + 1, '#9e9ac8',
-  interval * 3 + 1, '#756bb1',
-  interval * 4 + 1, '#54278f'
+  0, '#f2f0f7',
+  Math.max(1, maxArtists * 0.2), '#dadaeb',
+  Math.max(2, maxArtists * 0.4), '#bcbddc',
+  Math.max(3, maxArtists * 0.6), '#9e9ac8',
+  Math.max(4, maxArtists * 0.8), '#756bb1',
+  maxArtists, '#54278f'
 ];
 
-  map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
+map.setPaintProperty(
+  'neighborhood-fill',
+  'fill-color',
+  colorExpression
+);
 
-  map.setPaintProperty('neighborhood-fill', 'fill-opacity', 0.75);
+map.setPaintProperty(
+  'neighborhood-fill',
+  'fill-opacity',
+  0.75
+);
   
   addSubwayLayers();
 
@@ -276,7 +283,7 @@ function addSubwayLayers() {
     minzoom: 10,
 
     layout: {
-      'text-field': ['get', 'stop_name'],
+      'text-field': ['get', 'name'],
       'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
       'text-size': 10,
       'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
