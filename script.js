@@ -108,7 +108,7 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   });
 
   neighborhoods.features.forEach(f => { 
-    f.properties.artistCount = Number(countsMap[ntaname]) || 0;
+    f.properties.artistCount = Number(countsMap[f.properties.ntaname]) || 0; 
   });
   
 const maxArtists = Math.max(...Object.values(countsMap), 1);
