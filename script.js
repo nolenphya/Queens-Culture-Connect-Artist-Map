@@ -98,6 +98,7 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   const countsMap = {};
   const seenIds = new Set();
 
+  // 1. Map Airtable data to Neighborhood names
   data.forEach(row => {
     if (seenIds.has(row.id)) return;
     seenIds.add(row.id);
@@ -110,28 +111,41 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     }
   });
 
-  neighborhoods.features.forEach(f => { 
-    f.properties.artistCount = countsMap[f.properties.ntaname] || 0; 
+  // 2. Calculate Density (Artists per Sq Mile)
+  neighborhoods.features.forEach(f => {
+    const artistCount = countsMap[f.properties.ntaname] || 0;
+    // Calculate area in square miles using Turf
+    const areaSqMeters = turf.area(f);
+    const areaSqMiles = areaSqMeters * 0.000000386102;
+    const density = artistCount / areaSqMiles;
+    
+    f.properties.artistCount = artistCount;
+    f.properties.density = density;
   });
-  
-  const safeMax = Math.max(...Object.values(countsMap)) || 1;
 
-  // FIX: Dynamic color expression to avoid the "Dark Shape" bug
+  // 3. Define 4 Density Bands
+  // You can adjust these thresholds based on your specific data distribution
+  const lowThreshold = 2;   // Example: 2 artists per sq mile
+  const medThreshold = 10;  // Example: 10 artists per sq mile
+  const highThreshold = 25; // Example: 25+ artists per sq mile
+
   const colorExpression = [
-    'interpolate', ['linear'], ['get', 'artistCount'],
-    0, '#f2f0f7',         // No artists
-    1, '#dadaeb'          // 1 artist
+    'step',
+    ['get', 'density'],
+    'rgba(242, 240, 247, 0.5)', // No Artists (0 density)
+    0.00001, '#dadaeb',         // Low Density (starts just above 0)
+    lowThreshold, '#9e9ac8',    // Medium Density
+    medThreshold, '#756bb1',    // High Density
+    highThreshold, '#54278f'    // Very High Density
   ];
 
-  if (safeMax > 1) {
-    colorExpression.push(safeMax * 0.5, '#9e9ac8');
-    colorExpression.push(safeMax, '#54278f');
-  }
-
   map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
+  map.setPaintProperty('neighborhood-fill', 'fill-opacity', 0.8);
 
+  // Ensure subway layers are always on top
   addSubwayLayers();
 
+  // Re-use your existing popup logic...
   const showPopup = (name, lngLat) => {
     const artists = artistGroups[name] || [];
     const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
@@ -140,7 +154,7 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     const html = `
       <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
         <h3 style="margin:0 0 5px 0;">${name}</h3>
-        <p><strong>${artists.length}</strong> Artists</p>
+        <p><strong>${artists.length}</strong> Artists (${(countsMap[name] / (turf.area(neighborhoods.features.find(f => f.properties.ntaname === name)) * 0.000000386102)).toFixed(1)}/sq mi)</p>
         <hr style="border:0; border-top:1px solid #eee;">
         ${artists.map(a => {
           const displayName = a["Name"] || a["Org Name"] || "Unnamed Artist";
@@ -155,7 +169,7 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   };
 
   map.on('click', 'neighborhood-fill', (e) => showPopup(e.features[0].properties.ntaname, e.lngLat));
-  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, safeMax);
+  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, highThreshold);
   setupSearch(data);
 }
 
@@ -164,6 +178,11 @@ function addSubwayLayers() {
     map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
     map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
   }
+
+  // Remove layers if they exist to re-add them on top
+  if (map.getLayer('subway-lines-layer')) map.removeLayer('subway-lines-layer');
+  if (map.getLayer('subway-stations-stops')) map.removeLayer('subway-stations-stops');
+  if (map.getLayer('subway-labels')) map.removeLayer('subway-labels');
 
   map.addLayer({
     id: 'subway-lines-layer', type: 'line', source: 'subway-lines',
@@ -175,20 +194,22 @@ function addSubwayLayers() {
 
   map.addLayer({
     id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-    paint: { 'circle-radius': 3.5, 'circle-color': '#fff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
+    paint: { 'circle-radius': 3, 'circle-color': '#fff', 'circle-stroke-width': 1, 'circle-stroke-color': '#000' }
   });
 
   map.addLayer({
     id: 'subway-labels', type: 'symbol', source: 'subway-stops',
-    minzoom: 13,
+    minzoom: 12, // Lowered minzoom so they appear sooner
     layout: {
       'text-field': ['get', 'stop_name'],
-      'text-font': ['Arial Unicode MS Regular'],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Regular'],
       'text-size': 10,
       'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-      'text-radial-offset': 0.8
+      'text-radial-offset': 0.5,
+      'text-allow-overlap': false, // Set to false to prevent clutter, but true if you MUST see them
+      'text-ignore-placement': false
     },
-    paint: { 'text-color': '#444', 'text-halo-color': '#fff', 'text-halo-width': 1.5 }
+    paint: { 'text-color': '#333', 'text-halo-color': '#fff', 'text-halo-width': 1.5 }
   });
 }
 
