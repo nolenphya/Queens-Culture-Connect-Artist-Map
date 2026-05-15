@@ -111,30 +111,36 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     f.properties.artistCount = countsMap[f.properties.ntaname] || 0; 
   });
   
-  const maxArtists = Math.max(...Object.values(countsMap)) || 1;
+  const maxArtists = Math.max(...Object.values(countsMap), 0) || 1;
 
-  // 3. COLOR LOGIC: 5 Equal Interval Bands for Legend Matching
+  // --- SAFE BAND CALCULATION ---
+  // We ensure each step is at least 1 higher than the previous step
   const interval = maxArtists / 5;
-  const i1 = Math.ceil(interval);
-  const i2 = Math.ceil(interval * 2);
-  const i3 = Math.ceil(interval * 3);
-  const i4 = Math.ceil(interval * 4);
+  let s1 = Math.max(1, Math.floor(interval));
+  let s2 = Math.max(s1 + 1, Math.floor(interval * 2));
+  let s3 = Math.max(s2 + 1, Math.floor(interval * 3));
+  let s4 = Math.max(s3 + 1, Math.floor(interval * 4));
 
   const colorExpression = [
     'step',
     ['get', 'artistCount'],
-    '#f2f0f7', // 0 artists (No Color)
-    1, '#dadaeb',    // 1 to interval
-    i1 + 1, '#bcbddc', // Band 2
-    i2 + 1, '#9e9ac8', // Band 3
-    i3 + 1, '#756bb1', // Band 4
-    i4 + 1, '#54278f'  // Band 5
+    '#f2f0f7', // 0 artists
+    1,  '#dadaeb', // Band 1: 1 to s1
+    s1 + 1, '#bcbddc', // Band 2
+    s2 + 1, '#9e9ac8', // Band 3
+    s3 + 1, '#756bb1', // Band 4
+    s4 + 1, '#54278f'  // Band 5: High
   ];
 
-  map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
+  // Apply the color
+  if (map.getLayer('neighborhood-fill')) {
+    map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
+  }
 
+  // Re-run subway layers to keep them on top
   addSubwayLayers();
 
+  // --- POPUP & UI LOGIC ---
   const showPopup = (name, lngLat) => {
     const artists = artistGroups[name] || [];
     const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
@@ -142,36 +148,30 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
 
     const html = `
       <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
-        <h3 style="margin:0 0 5px 0;">${name}</h3>
-        <p><strong>${artists.length}</strong> Artists</p>
+        <h3 style="margin:0 0 5px 0; font-size:16px;">${name}</h3>
+        <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
         <hr style="border:0; border-top:1px solid #eee;">
         ${artists.map(a => {
           const displayName = a["Name"] || a["Org Name"] || "Unnamed Artist";
           const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
           return `<div style="margin-top:8px;">
-                    <div style="font-weight:bold; font-size:14px;">${displayName}</div>
-                    <a href="${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
+                    <div style="font-weight:bold; font-size:13px;">${displayName}</div>
+                    <a href="${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end" target="_blank" style="color:#007bff; text-decoration:none; font-size:11px;">View Profile →</a>
                   </div>`;
         }).join('')}
       </div>`;
     new mapboxgl.Popup().setLngLat(lngLat).setHTML(html).addTo(map);
   };
 
-  // Ensure click listener is explicitly on the fill layer
+  // Re-attach listeners to ensure they point to the newest data
+  map.off('click', 'neighborhood-fill'); 
   map.on('click', 'neighborhood-fill', (e) => {
-    if (e.features.length > 0) {
-      showPopup(e.features[0].properties.ntaname, e.lngLat);
-    }
+    if (e.features.length > 0) showPopup(e.features[0].properties.ntaname, e.lngLat);
   });
 
-  // Change cursor to pointer on hover
-  map.on('mouseenter', 'neighborhood-fill', () => map.getCanvas().style.cursor = 'pointer');
-  map.on('mouseleave', 'neighborhood-fill', () => map.getCanvas().style.cursor = '');
-
-  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, maxArtists);
+  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, {s1, s2, s3, s4});
   setupSearch(data);
 }
-
 function addSubwayLayers() {
   // 1. REINSTATE SUBWAY STOPS: Manually adding layers from GeoJSON
   if (!map.getSource('subway-lines')) {
