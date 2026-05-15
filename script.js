@@ -111,28 +111,26 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     f.properties.artistCount = countsMap[f.properties.ntaname] || 0; 
   });
   
-  const maxArtists = Math.max(...Object.values(countsMap)) || 1;
+  const maxArtists = Math.max(...Object.values(countsMap), 1);
 
-  // 3. COLOR LOGIC: 5 Equal Interval Bands for Legend Matching
-  const interval = maxArtists / 5;
-  const i1 = Math.ceil(interval);
-  const i2 = Math.ceil(interval * 2);
-  const i3 = Math.ceil(interval * 3);
-  const i4 = Math.ceil(interval * 4);
+const interval = Math.max(1, Math.ceil(maxArtists / 5));
 
-  const colorExpression = [
-    'step',
-    ['get', 'artistCount'],
-    '#f2f0f7', // 0 artists (No Color)
-    1, '#dadaeb',    // 1 to interval
-    i1 + 1, '#bcbddc', // Band 2
-    i2 + 1, '#9e9ac8', // Band 3
-    i3 + 1, '#756bb1', // Band 4
-    i4 + 1, '#54278f'  // Band 5
-  ];
+const colorExpression = [
+  'step',
+  ['get', 'artistCount'],
+  '#f2f0f7',
+
+  1, '#dadaeb',
+  interval + 1, '#bcbddc',
+  interval * 2 + 1, '#9e9ac8',
+  interval * 3 + 1, '#756bb1',
+  interval * 4 + 1, '#54278f'
+];
 
   map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
 
+  map.setPaintProperty('neighborhood-fill', 'fill-opacity', 0.75);
+  
   addSubwayLayers();
 
   const showPopup = (name, lngLat) => {
@@ -171,6 +169,71 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, maxArtists);
   setupSearch(data);
 }
+function setupSearch(data) {
+  const input = document.getElementById('search-input');
+  const results = document.getElementById('search-results');
+
+  input.addEventListener('input', () => {
+    const term = input.value.toLowerCase().trim();
+
+    results.innerHTML = '';
+
+    if (!term) return;
+
+    const matches = data.filter(item => {
+      const name = (item.Name || item['Org Name'] || '').toLowerCase();
+      const tags = (item.Tags || '').toString().toLowerCase();
+
+      return name.includes(term) || tags.includes(term);
+    });
+
+    matches.slice(0, 20).forEach(match => {
+      const div = document.createElement('div');
+      div.className = 'search-item';
+      div.style = `
+        padding:8px;
+        border-bottom:1px solid #eee;
+        cursor:pointer;
+        font-size:12px;
+      `;
+
+      div.innerHTML = `
+        <strong>${match.Name || match['Org Name'] || 'Unnamed'}</strong>
+      `;
+
+      div.onclick = () => {
+        const zip = String(match.Zip_Code || '').trim();
+        const nta = ZIP_TO_NTA[zip];
+
+        if (!nta) return;
+
+        const feature = geoData.features.find(
+          f => f.properties.ntaname === nta
+        );
+
+        if (!feature) return;
+
+        const center = turf.center(feature).geometry.coordinates;
+
+        map.flyTo({
+          center,
+          zoom: 14
+        });
+
+        new mapboxgl.Popup()
+          .setLngLat(center)
+          .setHTML(`
+            <div>
+              <strong>${match.Name || match['Org Name']}</strong>
+            </div>
+          `)
+          .addTo(map);
+      };
+
+      results.appendChild(div);
+    });
+  });
+}
 
 function addSubwayLayers() {
   // 1. REINSTATE SUBWAY STOPS: Manually adding layers from GeoJSON
@@ -205,25 +268,29 @@ function addSubwayLayers() {
   }
 
   // Station Labels
-  if (!map.getLayer('subway-labels')) {
-    map.addLayer({
-      id: 'subway-labels', type: 'symbol', source: 'subway-stops',
-      minzoom: 12,
-      layout: {
-        'text-field': ['get', 'stop_name'],
-        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-        'text-size': 10,
-        'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-        'text-radial-offset': 0.5,
-        'text-allow-overlap': false // Set to true if you want them to show regardless of clutter
-      },
-      paint: {
-        'text-color': '#333',
-        'text-halo-color': '#fff',
-        'text-halo-width': 1.5
-      }
-    });
-  }
+ if (!map.getLayer('subway-labels')) {
+  map.addLayer({
+    id: 'subway-labels',
+    type: 'symbol',
+    source: 'subway-stops',
+    minzoom: 10,
+
+    layout: {
+      'text-field': ['get', 'stop_name'],
+      'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+      'text-size': 10,
+      'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+      'text-radial-offset': 0.5,
+      'text-allow-overlap': true
+    },
+
+    paint: {
+      'text-color': '#222',
+      'text-halo-color': '#fff',
+      'text-halo-width': 1.5
+    }
+  });
+}
 }
 
 function updateSidebarAndLegend(groups, neighborhoods, popupFn, maxArtists) {
@@ -261,4 +328,35 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn, maxArtists) {
     container.appendChild(item);
   });
 }
-// ... Search and Reset functions remain as they were ...
+
+// =========================
+// LEGEND TOGGLE
+// =========================
+
+const legendPanel = document.getElementById('legend-panel');
+const legendToggle = document.getElementById('legend-toggle');
+
+legendToggle.addEventListener('click', () => {
+  legendPanel.classList.toggle('collapsed');
+
+  if (legendPanel.classList.contains('collapsed')) {
+    legendToggle.textContent = 'Show';
+  } else {
+    legendToggle.textContent = 'Hide';
+  }
+});
+
+// =========================
+// RESET BUTTON
+// =========================
+
+document.getElementById('reset-legend').addEventListener('click', () => {
+  map.flyTo({
+    center: [-73.94, 40.73],
+    zoom: 11
+  });
+
+  // clear search
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results').innerHTML = '';
+});
