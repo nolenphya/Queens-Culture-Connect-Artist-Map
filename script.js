@@ -2,6 +2,7 @@
 mapboxgl.accessToken = 'pk.eyJ1IjoiZmx1c2hpbmd0b3duaGFsbCIsImEiOiJjbWRmZHFxb2EwY2p3MmlxM3JoMmJwNDVrIn0.KDnT79yQuUeYVaqcKlmQGQ';
 const map = new mapboxgl.Map({
   container: 'map',
+  // Using a style that includes built-in transit labels
   style: 'mapbox://styles/mapbox/light-v11',
   center: [-73.94, 40.73],
   zoom: 11
@@ -60,22 +61,27 @@ async function fetchData() {
 }
 
 map.on('load', async () => {
+  // Fix for Subway Labels: Force Mapbox transit labels to be visible
+  if (map.getLayer('transit-label')) {
+    map.setLayoutProperty('transit-label', 'visibility', 'visible');
+  }
+
   const records = await fetchData();
   const data = records.map(r => ({ id: r.id, ...r.fields }));
   geoData = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson').then(res => res.json());
 
   map.addSource('neighborhoods', { type: 'geojson', data: geoData });
 
-  // 2. CLICK FIX: Add fill layer on top of others to ensure click events fire
+  // 1. FILL LAYER: Fix for the "transparent black" issue by using a solid starting point
   map.addLayer({
     id: 'neighborhood-fill',
     type: 'fill',
     source: 'neighborhoods',
     paint: {
-      'fill-color': '#f2f0f7', // Default base color
+      'fill-color': '#f2f0f7',
       'fill-opacity': 0.7
     }
-  });
+  }, 'road-label'); // Places fill below road labels for better readability
 
   map.addLayer({
     id: 'neighborhood-outline',
@@ -111,36 +117,31 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     f.properties.artistCount = countsMap[f.properties.ntaname] || 0; 
   });
   
-  const maxArtists = Math.max(...Object.values(countsMap), 0) || 1;
+  const maxArtists = Math.max(...Object.values(countsMap)) || 1;
 
-  // --- SAFE BAND CALCULATION ---
-  // We ensure each step is at least 1 higher than the previous step
-  const interval = maxArtists / 5;
-  let s1 = Math.max(1, Math.floor(interval));
-  let s2 = Math.max(s1 + 1, Math.floor(interval * 2));
-  let s3 = Math.max(s2 + 1, Math.floor(interval * 3));
-  let s4 = Math.max(s3 + 1, Math.floor(interval * 4));
+  // 2. CHOROPLETH LOGIC: 5 Equal Interval Bands
+  // Intervals: 0, 1-20%, 21-40%, 41-60%, 61-80%, 81-100% of max
+  const i1 = Math.floor(maxArtists * 0.2);
+  const i2 = Math.floor(maxArtists * 0.4);
+  const i3 = Math.floor(maxArtists * 0.6);
+  const i4 = Math.floor(maxArtists * 0.8);
 
   const colorExpression = [
     'step',
     ['get', 'artistCount'],
     '#f2f0f7', // 0 artists
-    1,  '#dadaeb', // Band 1: 1 to s1
-    s1 + 1, '#bcbddc', // Band 2
-    s2 + 1, '#9e9ac8', // Band 3
-    s3 + 1, '#756bb1', // Band 4
-    s4 + 1, '#54278f'  // Band 5: High
+    1, '#dadaeb', // Band 1
+    i1 > 1 ? i1 : 2, '#bcbddc', // Band 2
+    i2 > i1 ? i2 : 3, '#9e9ac8', // Band 3
+    i3 > i2 ? i3 : 4, '#756bb1', // Band 4
+    i4 > i3 ? i4 : 5, '#54278f'  // Band 5 (High)
   ];
 
-  // Apply the color
-  if (map.getLayer('neighborhood-fill')) {
-    map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
-  }
+  map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
 
-  // Re-run subway layers to keep them on top
+  // Subway logic integrated here to ensure it's on top
   addSubwayLayers();
 
-  // --- POPUP & UI LOGIC ---
   const showPopup = (name, lngLat) => {
     const artists = artistGroups[name] || [];
     const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
@@ -148,38 +149,33 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
 
     const html = `
       <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
-        <h3 style="margin:0 0 5px 0; font-size:16px;">${name}</h3>
-        <p style="margin:0 0 10px 0;"><strong>${artists.length}</strong> Artists</p>
+        <h3 style="margin:0 0 5px 0;">${name}</h3>
+        <p><strong>${artists.length}</strong> Artists</p>
         <hr style="border:0; border-top:1px solid #eee;">
         ${artists.map(a => {
           const displayName = a["Name"] || a["Org Name"] || "Unnamed Artist";
           const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
           return `<div style="margin-top:8px;">
-                    <div style="font-weight:bold; font-size:13px;">${displayName}</div>
-                    <a href="${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end" target="_blank" style="color:#007bff; text-decoration:none; font-size:11px;">View Profile →</a>
+                    <div style="font-weight:bold; font-size:14px;">${displayName}</div>
+                    <a href="${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end" target="_blank" style="color:#007bff; text-decoration:none; font-size:12px;">View Profile →</a>
                   </div>`;
         }).join('')}
       </div>`;
     new mapboxgl.Popup().setLngLat(lngLat).setHTML(html).addTo(map);
   };
 
-  // Re-attach listeners to ensure they point to the newest data
-  map.off('click', 'neighborhood-fill'); 
-  map.on('click', 'neighborhood-fill', (e) => {
-    if (e.features.length > 0) showPopup(e.features[0].properties.ntaname, e.lngLat);
-  });
-
-  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, {s1, s2, s3, s4});
+  map.on('click', 'neighborhood-fill', (e) => showPopup(e.features[0].properties.ntaname, e.lngLat));
+  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, maxArtists);
   setupSearch(data);
 }
+
 function addSubwayLayers() {
-  // 1. REINSTATE SUBWAY STOPS: Manually adding layers from GeoJSON
+  // 3. SUBWAY LABELS: Pulling directly from Mapbox vector tiles for reliability
+  // We keep the geojson lines for custom styling, but let Mapbox handle labels
   if (!map.getSource('subway-lines')) {
     map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
-    map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
   }
 
-  // Lines
   if (!map.getLayer('subway-lines-layer')) {
     map.addLayer({
       id: 'subway-lines-layer', type: 'line', source: 'subway-lines',
@@ -190,59 +186,21 @@ function addSubwayLayers() {
       }
     });
   }
-
-  // Station Circles
-  if (!map.getLayer('subway-stations-stops')) {
-    map.addLayer({
-      id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-      paint: {
-        'circle-radius': 3,
-        'circle-color': '#fff',
-        'circle-stroke-width': 1,
-        'circle-stroke-color': '#000'
-      }
-    });
-  }
-
-  // Station Labels
-  if (!map.getLayer('subway-labels')) {
-    map.addLayer({
-      id: 'subway-labels', type: 'symbol', source: 'subway-stops',
-      minzoom: 12,
-      layout: {
-        'text-field': ['get', 'stop_name'],
-        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-        'text-size': 10,
-        'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-        'text-radial-offset': 0.5,
-        'text-allow-overlap': false // Set to true if you want them to show regardless of clutter
-      },
-      paint: {
-        'text-color': '#333',
-        'text-halo-color': '#fff',
-        'text-halo-width': 1.5
-      }
-    });
-  }
 }
 
 function updateSidebarAndLegend(groups, neighborhoods, popupFn, maxArtists) {
   const container = document.getElementById('legend');
-  const interval = Math.ceil(maxArtists / 5);
-  
   container.innerHTML = `
     <div style="margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #eee;">
-      <h4 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:#666;">Artist Count</h4>
-      <div style="display:flex; flex-direction:column; gap:4px;">
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#f2f0f7; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">0 Artists</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#dadaeb; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">1 - ${interval}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#bcbddc; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${interval + 1} - ${interval * 2}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#9e9ac8; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${interval * 2 + 1} - ${interval * 3}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#756bb1; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${interval * 3 + 1} - ${interval * 4}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#54278f; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${interval * 4 + 1}+</span></div>
+      <h4 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:#666;">Artist Density</h4>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding-right:10px;">
+        <div style="text-align:center"><div style="width:20px; height:20px; background:#f2f0f7; border:1px solid #ccc;"></div><span style="font-size:10px;">0</span></div>
+        <div style="text-align:center"><div style="width:20px; height:20px; background:#bcbddc; border:1px solid #ccc;"></div><span style="font-size:10px;">Low</span></div>
+        <div style="text-align:center"><div style="width:20px; height:20px; background:#756bb1; border:1px solid #ccc;"></div><span style="font-size:10px;">Med</span></div>
+        <div style="text-align:center"><div style="width:20px; height:20px; background:#54278f; border:1px solid #ccc;"></div><span style="font-size:10px;">High</span></div>
       </div>
     </div>
-    <h3>Neighborhoods</h3>
+    <h3>Artist Neighborhoods</h3>
   `;
 
   Object.keys(groups).sort().forEach(name => {
@@ -261,4 +219,84 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn, maxArtists) {
     container.appendChild(item);
   });
 }
-// ... Search and Reset functions remain as they were ...
+
+// ... setupSearch and Button Listeners remain the same as previous versions ...
+
+function setupSearch(data) {
+  const searchInput = document.getElementById('search-input');
+  const resultsBox = document.getElementById('search-results');
+  let currentFocus = -1;
+
+  searchInput.addEventListener('input', () => {
+    const val = searchInput.value.toLowerCase();
+    resultsBox.innerHTML = '';
+    currentFocus = -1;
+    if (!val) return;
+
+    const matches = data.filter(r => {
+      const name = (r["Name"] || r["Org Name"] || "").toLowerCase();
+      const disc = String(r["Artistic Disciplines"] || "").toLowerCase();
+      return name.includes(val) || disc.includes(val);
+    }).slice(0, 10);
+
+    matches.forEach((m, i) => {
+      const div = document.createElement('div');
+      div.className = 'search-item';
+      div.style = "padding:10px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
+      div.innerHTML = `<b>${m["Name"] || m["Org Name"]}</b><br><small>${m["Artistic Disciplines"] || ""}</small>`;
+      div.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        navigateToArtist(m);
+      });
+      resultsBox.appendChild(div);
+    });
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    const items = resultsBox.getElementsByClassName('search-item');
+    if (e.key === "ArrowDown") {
+      currentFocus = (currentFocus + 1) % items.length;
+      highlight(items);
+    } else if (e.key === "ArrowUp") {
+      currentFocus = (currentFocus - 1 + items.length) % items.length;
+      highlight(items);
+    } else if (e.key === "Enter" && currentFocus > -1) {
+      items[currentFocus].dispatchEvent(new Event('mousedown'));
+    }
+  });
+
+  function highlight(items) {
+    Array.from(items).forEach((el, i) => el.style.background = i === currentFocus ? "#f0f0f0" : "#fff");
+  }
+
+  function navigateToArtist(m) {
+    let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
+    const hood = ZIP_TO_NTA[zip];
+    if (hood && geoData) {
+      const feat = geoData.features.find(f => f.properties.ntaname === hood);
+      if (feat) map.flyTo({ center: turf.center(feat).geometry.coordinates, zoom: 14.5 });
+    }
+    resultsBox.innerHTML = '';
+    searchInput.value = '';
+  }
+}
+
+// Button Listeners
+document.addEventListener('DOMContentLoaded', () => {
+  const toggleBtn = document.getElementById('legend-toggle');
+  const resetBtn = document.getElementById('reset-legend');
+  const infoBtn = document.getElementById('info-button');
+  const overlay = document.getElementById('map-guide-overlay');
+
+  if (toggleBtn) toggleBtn.addEventListener('click', () => {
+    const panel = document.getElementById('legend-panel');
+    panel.classList.toggle('collapsed');
+    toggleBtn.textContent = panel.classList.contains('collapsed') ? 'Show' : 'Hide';
+  });
+
+  if (resetBtn) resetBtn.addEventListener('click', () => map.flyTo({ center: [-73.94, 40.73], zoom: 11 }));
+  if (infoBtn) infoBtn.addEventListener('click', () => overlay.style.display = 'flex');
+  if (document.getElementById('map-guide-close')) {
+    document.getElementById('map-guide-close').addEventListener('click', () => overlay.style.display = 'none');
+  }
+});
