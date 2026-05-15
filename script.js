@@ -113,17 +113,23 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   
 const maxArtists = Math.max(...Object.values(countsMap), 1);
 
+const stop1 = Math.max(1, Math.ceil(maxArtists * 0.2));
+const stop2 = Math.max(stop1 + 1, Math.ceil(maxArtists * 0.4));
+const stop3 = Math.max(stop2 + 1, Math.ceil(maxArtists * 0.6));
+const stop4 = Math.max(stop3 + 1, Math.ceil(maxArtists * 0.8));
+const stop5 = Math.max(stop4 + 1, maxArtists);
+
 const colorExpression = [
   'interpolate',
   ['linear'],
   ['get', 'artistCount'],
 
   0, '#f2f0f7',
-  Math.max(1, maxArtists * 0.2), '#dadaeb',
-  Math.max(2, maxArtists * 0.4), '#bcbddc',
-  Math.max(3, maxArtists * 0.6), '#9e9ac8',
-  Math.max(4, maxArtists * 0.8), '#756bb1',
-  maxArtists, '#54278f'
+  stop1, '#dadaeb',
+  stop2, '#bcbddc',
+  stop3, '#9e9ac8',
+  stop4, '#756bb1',
+  stop5, '#54278f'
 ];
 
 map.setPaintProperty(
@@ -280,7 +286,7 @@ function addSubwayLayers() {
     id: 'subway-labels',
     type: 'symbol',
     source: 'subway-stops',
-    minzoom: 10,
+    minzoom: 16,
 
     layout: {
       'text-field': ['get', 'name'],
