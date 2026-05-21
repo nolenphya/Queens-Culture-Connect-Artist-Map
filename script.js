@@ -7,7 +7,8 @@ const map = new mapboxgl.Map({
   zoom: 11
 });
 
-// --- Add Navigation & Geolocation Controls ---\nmap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+// --- Add Navigation & Geolocation Controls ---
+map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 map.addControl(new mapboxgl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
     trackUserLocation: true,
@@ -44,7 +45,6 @@ const ZIP_TO_NTA = {
 const artistGroups = {};
 let geoData = null;
 
-// Helper function to safely extract artist name
 function getArtistName(record) {
   if (record["Name"]) return record["Name"];
   if (record["Org Name"]) return record["Org Name"];
@@ -119,22 +119,28 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     }
   });
 
+  // Ensure every feature explicitly gets a valid base number (never undefined or null)
   neighborhoods.features.forEach(f => { 
-    f.properties.artistCount = Number(countsMap[f.properties.ntaname]) || 0; 
+    const count = countsMap[f.properties.ntaname];
+    f.properties.artistCount = typeof count === 'number' ? count : 0; 
   });
   
+  // Re-push data changes into the Mapbox source so the update registers completely
+  map.getSource('neighborhoods').setData(neighborhoods);
+
   const maxArtists = Math.max(...Object.values(countsMap), 1);
 
-  // --- STRICTLY ASCENDING INTERVAL GENERATION ---
-  // Guarantees sequence limits step upwards perfectly even if numbers are low or compact
+  // Strictly ascending dynamic bounds 
   const s1 = Math.max(1, Math.ceil(maxArtists * 0.2));
   const s2 = Math.max(s1 + 1, Math.ceil(maxArtists * 0.4));
   const s3 = Math.max(s2 + 1, Math.ceil(maxArtists * 0.6));
   const s4 = Math.max(s3 + 1, Math.ceil(maxArtists * 0.8));
 
+  // Fix: wrapped ['get', 'artistCount'] inside a 'coalesce' statement. 
+  // If the count is ever evaluated as null by Mapbox, it safely treats it as 0.
   const colorExpression = [
     'step',
-    ['get', 'artistCount'],
+    ['coalesce', ['get', 'artistCount'], 0],
     '#f2f0f7', // 0 artists
     1,          '#dadaeb', // Band 1: 1 to s1
     s1 + 1,     '#bcbddc', // Band 2: s1+1 to s2
@@ -145,7 +151,6 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
 
   map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
 
-  // Define dynamic popups
   const showPopup = (name, lngLat) => {
     const artists = artistGroups[name] || [];
     const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
@@ -177,7 +182,6 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   map.on('mouseenter', 'neighborhood-fill', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'neighborhood-fill', () => map.getCanvas().style.cursor = '');
 
-  // Add transit vectors and synchronize widgets
   addSubwayLayers();
   updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, {s1, s2, s3, s4});
   setupSearch(data);
@@ -212,7 +216,6 @@ function addSubwayLayers() {
     });
   }
 
-  // FIXED PROPERTY MAPPING: standard open data properties hold names in lowercase 'name' key
   if (!map.getLayer('subway-labels')) {
     map.addLayer({
       id: 'subway-labels', 
