@@ -7,7 +7,7 @@ const map = new mapboxgl.Map({
   zoom: 11
 });
 
-// --- Add Navigation & Geolocation Controls ---
+// Map Utilities and Navigation Controls
 map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 map.addControl(new mapboxgl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
@@ -15,13 +15,13 @@ map.addControl(new mapboxgl.GeolocateControl({
     showUserHeading: true
 }), 'top-right');
 
-// Airtable Setup
+// Airtable Configurations
 const AIRTABLE_API_KEY = 'patboskAQTJUi9FlQ.1c30c3c632cd4d7bd03cf949e50edd922425aba8dcbf0c8a6002e98db67c74a3';
 const BASE_ID = 'apppBx0a9hj0Z1ciw';
 const TABLE_NAME = 'tbl9OiPT8QI8ss20e';
 const AIRTABLE_URL = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`;
 
-// Zip Code Crosswalk
+// Reference Mapping Crosswalk
 const ZIP_TO_NTA = {
   "11101": "Long Island City-Hunters Point", "11102": "Old Astoria-Hallets Point", "11103": "Astoria (Central)",
   "11104": "Sunnyside", "11105": "Astoria (North)-Ditmars-Steinway", "11106": "Astoria (East)-Woodside (North)",
@@ -45,13 +45,6 @@ const ZIP_TO_NTA = {
 const artistGroups = {};
 let geoData = null;
 
-function getArtistName(record) {
-  if (record["Name"]) return record["Name"];
-  if (record["Org Name"]) return record["Org Name"];
-  if (record["Organization Name"]) return record["Organization Name"];
-  return "Unnamed Entity";
-}
-
 async function fetchData() {
   const filterFormula = encodeURIComponent("{Approved}=TRUE()");
   let allRecords = [];
@@ -66,7 +59,7 @@ async function fetchData() {
     } while (offset);
     return allRecords;
   } catch (err) {
-    console.error("Airtable Data Fetch Error:", err);
+    console.error("Data processing exception:", err);
     return allRecords;
   }
 }
@@ -79,6 +72,7 @@ map.on('load', async () => {
 
   map.addSource('neighborhoods', { type: 'geojson', data: geoData });
 
+  // Add Fill layer
   map.addLayer({
     id: 'neighborhood-fill',
     type: 'fill',
@@ -89,6 +83,7 @@ map.on('load', async () => {
     }
   });
 
+  // Add Boundary Outlines layer
   map.addLayer({
     id: 'neighborhood-outline',
     type: 'line',
@@ -119,56 +114,60 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
     }
   });
 
-  // Ensure every feature explicitly gets a valid base number (never undefined or null)
+  // Map numbers cleanly to prevent WebGL runtime fallback crashes
   neighborhoods.features.forEach(f => { 
     const count = countsMap[f.properties.ntaname];
     f.properties.artistCount = typeof count === 'number' ? count : 0; 
   });
   
-  // Re-push data changes into the Mapbox source so the update registers completely
   map.getSource('neighborhoods').setData(neighborhoods);
 
   const maxArtists = Math.max(...Object.values(countsMap), 1);
-
-  // Strictly ascending dynamic bounds 
   const s1 = Math.max(1, Math.ceil(maxArtists * 0.2));
   const s2 = Math.max(s1 + 1, Math.ceil(maxArtists * 0.4));
   const s3 = Math.max(s2 + 1, Math.ceil(maxArtists * 0.6));
   const s4 = Math.max(s3 + 1, Math.ceil(maxArtists * 0.8));
 
-  // Fix: wrapped ['get', 'artistCount'] inside a 'coalesce' statement. 
-  // If the count is ever evaluated as null by Mapbox, it safely treats it as 0.
   const colorExpression = [
     'step',
     ['coalesce', ['get', 'artistCount'], 0],
-    '#f2f0f7', // 0 artists
-    1,          '#dadaeb', // Band 1: 1 to s1
-    s1 + 1,     '#bcbddc', // Band 2: s1+1 to s2
-    s2 + 1,     '#9e9ac8', // Band 3: s2+1 to s3
-    s3 + 1,     '#756bb1', // Band 4: s3+1 to s4
-    s4 + 1,     '#54278f'  // Band 5: High Value Peak
+    '#f2f0f7',
+    1,          '#dadaeb',
+    s1 + 1,     '#bcbddc',
+    s2 + 1,     '#9e9ac8',
+    s3 + 1,     '#756bb1',
+    s4 + 1,     '#54278f'
   ];
 
   map.setPaintProperty('neighborhood-fill', 'fill-color', colorExpression);
 
+  // CHANGE 1: Refactored Popups to point directly to filtered Softr views instead of list clutter
   const showPopup = (name, lngLat) => {
-    const artists = artistGroups[name] || [];
-    const BASE_LIST_PAGE = "https://elwanda52071.softr.app/artists";
-    const DETAIL_SLUG = "/artists-details";
+    const totalCount = artistGroups[name] ? artistGroups[name].length : 0;
+    
+    // Replace URL paths with your production configurations
+    const BASE_SOFTR_DIRECTORY = "https://elwanda52071.softr.app/artists"; 
+    
+    // Direct link generated with dynamic neighborhood parameters targeting Softr parameters
+    const filterLink = `${BASE_SOFTR_DIRECTORY}?filter-by-Neighborhood=${encodeURIComponent(name)}`;
 
     const html = `
-      <div style="padding:10px; max-height:250px; overflow-y:auto; font-family:sans-serif;">
-        <h3 style="margin:0 0 5px 0;">${name}</h3>
-        <p><strong>${artists.length}</strong> Listings Found</p>
-        <hr style="border:0; border-top:1px solid #eee;">
-        ${artists.map(a => {
-          const displayName = getArtistName(a);
-          const modalParam = encodeURIComponent(`${DETAIL_SLUG}?recordId=${a.id}`);
-          return `<div style="margin-top:8px;">
-                    <div style="font-weight:bold; font-size:13px;">${displayName}</div>
-                    <a href="${BASE_LIST_PAGE}?modal=${modalParam}&modalSize=M&modalPlacement=end" target="_blank" style="color:#007bff; text-decoration:none; font-size:11px;">View Profile →</a>
-                  </div>`;
-        }).join('')}
+      <div style="padding:12px; font-family:sans-serif; text-align:center; min-width:180px;">
+        <h3 style="margin:0 0 4px 0; font-size:15px; color:#222;">${name}</h3>
+        <p style="margin:0 0 12px 0; font-size:13px; color:#666;">
+          <strong>${totalCount}</strong> Listings Registered
+        </p>
+        <a href="${filterLink}" target="_blank" style="
+          display: inline-block;
+          background: #007bff;
+          color: white;
+          padding: 6px 12px;
+          border-radius: 4px;
+          text-decoration: none;
+          font-weight: bold;
+          font-size: 12px;">
+          View in Softr Directory →
+        </a>
       </div>`;
     new mapboxgl.Popup().setLngLat(lngLat).setHTML(html).addTo(map);
   };
@@ -182,81 +181,64 @@ function createZipBasedChoropleth(data, neighborhoods, artistGroups) {
   map.on('mouseenter', 'neighborhood-fill', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'neighborhood-fill', () => map.getCanvas().style.cursor = '');
 
-  addSubwayLayers();
-  updateSidebarAndLegend(artistGroups, neighborhoods, showPopup, {s1, s2, s3, s4});
-  setupSearch(data);
+  // Initialize modular controls
+  buildBottomLeftScale({s1, s2, s3, s4});
+  setupLayerToggles();
+  updateSidebarLists(artistGroups, neighborhoods, showPopup);
 }
 
-function addSubwayLayers() {
-  if (!map.getSource('subway-lines')) {
-    map.addSource('subway-lines', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
-    map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
-  }
+// CHANGE 2: Build the isolated Legend Scale in the Bottom-Left
+function buildBottomLeftScale(stops) {
+  const container = document.getElementById('choropleth-legend');
+  if (!container) return;
 
-  if (!map.getLayer('subway-lines-layer')) {
-    map.addLayer({
-      id: 'subway-lines-layer', type: 'line', source: 'subway-lines',
-      paint: {
-        'line-width': 2,
-        'line-opacity': 0.4,
-        'line-color': ['match', ['get', 'rt_symbol'], '1', '#EE352E', '2', '#EE352E', '3', '#EE352E', '4', '#00933C', '5', '#00933C', '6', '#00933C', 'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD', 'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319', 'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A', 'L', '#A7A9AC', 'G', '#6CBE45', 'J', '#996633', 'Z', '#996633', '7', '#B933AD', '#000000']
-      }
-    });
-  }
-
-  if (!map.getLayer('subway-stations-stops')) {
-    map.addLayer({
-      id: 'subway-stations-stops', type: 'circle', source: 'subway-stops',
-      paint: {
-        'circle-radius': 3.5,
-        'circle-color': '#fff',
-        'circle-stroke-width': 1.2,
-        'circle-stroke-color': '#000'
-      }
-    });
-  }
-
-  if (!map.getLayer('subway-labels')) {
-    map.addLayer({
-      id: 'subway-labels', 
-      type: 'symbol', 
-      source: 'subway-stops',
-      minzoom: 12.5,
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-        'text-size': 10,
-        'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-        'text-radial-offset': 0.6,
-        'text-allow-overlap': false
-      },
-      paint: {
-        'text-color': '#333',
-        'text-halo-color': '#fff',
-        'text-halo-width': 1.5
-      }
-    });
-  }
+  container.innerHTML = `
+    <h4>Artist Count Scale</h4>
+    <div class="scale-row"><div class="scale-color" style="background:#f2f0f7;"></div><span>0 Listings</span></div>
+    <div class="scale-row"><div class="scale-color" style="background:#dadaeb;"></div><span>1 - ${stops.s1}</span></div>
+    <div class="scale-row"><div class="scale-color" style="background:#bcbddc;"></div><span>${stops.s1 + 1} - ${stops.s2}</span></div>
+    <div class="scale-row"><div class="scale-color" style="background:#9e9ac8;"></div><span>${stops.s2 + 1} - ${stops.s3}</span></div>
+    <div class="scale-row"><div class="scale-color" style="background:#756bb1;"></div><span>${stops.s3 + 1} - ${stops.s4}</span></div>
+    <div class="scale-row"><div class="scale-color" style="background:#54278f;"></div><span>${stops.s4 + 1}+</span></div>
+  `;
 }
 
-function updateSidebarAndLegend(groups, neighborhoods, popupFn, stops) {
+// CHANGE 3: Interactive Layer Visibility Checkbox Controller
+function setupLayerToggles() {
+  const container = document.getElementById('layer-toggles');
+  if (!container) return;
+
+  container.innerHTML = `
+    <label class="layer-checkbox-container">
+      <input type="checkbox" id="toggle-choropleth-layer" checked />
+      <span>Neighborhood Choropleth Map</span>
+    </label>
+  `;
+
+  document.getElementById('toggle-choropleth-layer').addEventListener('change', (e) => {
+    const visibility = e.target.checked ? 'visible' : 'none';
+    
+    if (map.getLayer('neighborhood-fill')) {
+      map.setLayoutProperty('neighborhood-fill', 'visibility', visibility);
+    }
+    if (map.getLayer('neighborhood-outline')) {
+      map.setLayoutProperty('neighborhood-outline', 'visibility', visibility);
+    }
+    
+    // Sync the bottom-left float block visibility with the checklist value
+    const bottomScale = document.getElementById('choropleth-legend');
+    if (bottomScale) {
+      bottomScale.style.display = e.target.checked ? 'block' : 'none';
+    }
+  });
+}
+
+// Render the Alphabetical Sidebar Directory Component
+function updateSidebarLists(groups, neighborhoods, popupFn) {
   const container = document.getElementById('legend');
   if (!container) return;
   
-  container.innerHTML = `
-    <div style="margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #eee;">
-      <h4 style="margin:0 0 8px 0; font-size:12px; text-transform:uppercase; color:#666;">Artist Count</h4>
-      <div style="display:flex; flex-direction:column; gap:4px;">
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#f2f0f7; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">0 Listings</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#dadaeb; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">1 - ${stops.s1}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#bcbddc; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${stops.s1 + 1} - ${stops.s2}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#9e9ac8; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${stops.s2 + 1} - ${stops.s3}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#756bb1; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${stops.s3 + 1} - ${stops.s4}</span></div>
-        <div style="display:flex; align-items:center;"><div style="width:16px; height:16px; background:#54278f; margin-right:8px; border:1px solid #ccc;"></div><span style="font-size:11px;">${stops.s4 + 1}+</span></div>
-      </div>
-    </div>
-    <h3>Neighborhoods</h3>
-  `;
+  container.innerHTML = `<h3>Neighborhood Directory</h3>`;
 
   Object.keys(groups).sort().forEach(name => {
     const item = document.createElement('div');
@@ -266,6 +248,7 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn, stops) {
     item.onclick = () => {
       const feature = neighborhoods.features.find(f => f.properties.ntaname === name);
       if (feature) {
+        // Center calculation via turf parsing
         const center = turf.center(feature).geometry.coordinates;
         map.flyTo({ center: center, zoom: 13.5 });
         popupFn(name, center);
@@ -275,85 +258,12 @@ function updateSidebarAndLegend(groups, neighborhoods, popupFn, stops) {
   });
 }
 
-function setupSearch(data) {
-  const searchInput = document.getElementById('search-input');
-  const resultsBox = document.getElementById('search-results');
-  if (!searchInput || !resultsBox) return;
-
-  let currentFocus = -1;
-
-  searchInput.addEventListener('input', (e) => {
-    const val = e.target.value.toLowerCase();
-    resultsBox.innerHTML = '';
-    currentFocus = -1;
-    if (!val) return;
-
-    const matches = data.filter(r => {
-      const nameMatch = getArtistName(r).toLowerCase().includes(val);
-      const tagMatch = String(r["Artistic Disciplines"] || "").toLowerCase().includes(val);
-      return nameMatch || tagMatch;
-    }).slice(0, 10);
-
-    matches.forEach((m, idx) => {
-      const div = document.createElement('div');
-      div.className = "search-item";
-      div.style = "padding:8px; cursor:pointer; border-bottom:1px solid #ddd; background:#fff; font-size:13px;";
-      div.innerHTML = `<b>${getArtistName(m)}</b><br><small>${m["Artistic Disciplines"] || ""}</small>`;
-      
-      div.addEventListener('mousedown', (e) => {
-        e.preventDefault(); 
-        navigateToArtist(m);
-      });
-      resultsBox.appendChild(div);
-    });
-  });
-
-  searchInput.addEventListener('keydown', (e) => {
-    const items = resultsBox.getElementsByClassName('search-item');
-    if (!items.length) return;
-
-    if (e.key === "ArrowDown") {
-      currentFocus++;
-      if (currentFocus >= items.length) currentFocus = 0;
-      highlight(items);
-    } else if (e.key === "ArrowUp") {
-      currentFocus--;
-      if (currentFocus < 0) currentFocus = items.length - 1;
-      highlight(items);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (currentFocus > -1 && items[currentFocus]) {
-        items[currentFocus].dispatchEvent(new Event('mousedown'));
-      }
-    }
-  });
-
-  function highlight(items) {
-    Array.from(items).forEach((el, i) => {
-      el.style.background = i === currentFocus ? "#f0f0f0" : "#fff";
-    });
-  }
-
-  function navigateToArtist(m) {
-    let zip = String((Array.isArray(m.Zip_Code) ? m.Zip_Code[0] : m.Zip_Code) || "").trim();
-    const hood = ZIP_TO_NTA[zip];
-    if (hood && geoData) {
-      const feat = geoData.features.find(f => f.properties.ntaname === hood);
-      if (feat) {
-        map.flyTo({ center: turf.center(feat).geometry.coordinates, zoom: 14.5 });
-      }
-    }
-    resultsBox.innerHTML = '';
-    searchInput.value = '';
-  }
-}
-
-// Global Layout Event Listeners
+// Global UI Layout listeners 
 document.addEventListener('DOMContentLoaded', () => {
   const toggleBtn = document.getElementById('legend-toggle');
   const resetBtn = document.getElementById('reset-legend');
-  const infoBtn = document.getElementById('info-button');
   const overlay = document.getElementById('intro-overlay');
+  const closeIntro = document.getElementById('close-intro');
 
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
@@ -369,17 +279,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (infoBtn && overlay) {
-    infoBtn.addEventListener('click', () => {
-      overlay.style.display = 'block';
-    });
-  }
-  
-  if (overlay) {
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay || e.target.closest('.intro-content') === null) {
-        overlay.style.display = 'none';
-      }
+  if (closeIntro && overlay) {
+    closeIntro.addEventListener('click', () => {
+      overlay.style.display = 'none';
     });
   }
 });

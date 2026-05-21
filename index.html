@@ -5,16 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Queens Arts & Culture Map</title>
 
-<!-- Select2 CSS -->
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-
-  <!-- Mapbox GL -->
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
 
-  <!-- Styles -->
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -27,105 +23,48 @@
   </div>
 </header>
 
-  <!-- Intro Overlay -->
   <div id="intro-overlay">
     <div class="intro-content">
       <h2>Welcome to the Queens Arts and Culture Map</h2>
       <p>
         In 2024, Flushing Town Hall was invited by the New York State Council on the Arts (NYSCA) to lead The Queens Cultural Mapping Initiative, designed to document the rich and diverse artistic landscape of Queens.
-        The project celebrates the cultural contributions of its communities while also shedding light on the challenges they face.
-        </p>
-        <p>
-        Through this work, our team connected with over 150 artists and arts and cultural organizations across the borough. A clear need emerged:
-        a centralized, accessible resource that would connect artists, cultural organizations, and community spaces throughout Queens.
-        This digital map was created in direct response to that need.
-        </p>
-        <p>
-        Our goal is for this map to be a valuable tool that fosters connections among artists, cultural workers, and community spaces in Queens—
-        supporting deeper exploration, engagement, and collaboration across the borough’s vibrant creative communities.
-        </p>
-        <p>
-        We’re excited to continue growing this resource.
-        </p>
       </p>
       <div style="display: inline-block;">
-
-      <a href="https://airtable.com/apppBx0a9hj0Z1ciw/pagkf63IaBt2wJvFo/form" target="_blank">
-        <button id="add-info" style="background-color: black; color: white;">Join the Map</button>
-      </a>
-      
-
-      
-      <button id="close-intro" style="background-color: black; color: white;">Explore the Map</button>
-
+        <a href="https://airtable.com/apppBx0a9hj0Z1ciw/pagkf63IaBt2wJvFo/form" target="_blank">
+          <button id="add-info" style="background-color: black; color: white;">Join the Map</button>
+        </a>
+        <button id="close-intro" style="background-color: black; color: white;">Explore the Map</button>
       </div>
-        
-     
-      
-  
-         <div class="logos">
-          <br/>
-  <img src="trilogo.png" alt="FTH Logo" class="logo">
-        </div>
-    <i>Developed by Nolen Scruggs & Oussama Ouadani. Connect with us <a href="http://bit.ly/42pIaMY" target="_blank">here</a></i>
-      </div>
-
+    </div>
   </div>
 
-<!-- Map Guide Overlay -->
-<div id="map-guide-overlay" class="map-guide-overlay" style="display: none;">
-  <!-- Add inside your info box HTML -->
-<button id="map-guide-close" style="position: absolute; top: 8px; right: 12px; font-size: 24px; cursor: pointer;">&times;</button>
-
-  <div class="map-guide-content">
-    <h2>Navigating the Map</h2>
-    <p>Your guide to discovering and connecting with arts and culture spaces across Queens, New York.</p>
-    <ul style="text-align: left;">
-      <li>🗺️ <a href="https://airtable.com/apppBx0a9hj0Z1ciw/pagkf63IaBt2wJvFo/form" style="font-weight: bold;">Join the Map:</a> All Queens-based arts and culture organizations with a physical location are encouraged to submit a listing. Once approved, it will appear on the map. </li>
-      <br/>
-      <li>🔍 <b>Explore Queens:</b> Use the filter tool to search for organizations by neighborhood, venue type, and program offerings. </li>
-      <br/>
-      <li>📍 <b>Share the Map:</b> Invite your creative networks to join and explore the map! </li>
-    </ul>
-    <p>For questions or listing updates, <a href="mailto:nbedon@flushingtownhall.org">contact us</a>.</p>
-  </div>
-</div>
-
-
-
-  <!-- Map -->
   <div id="map"></div>
 
-<button id="info-button" title="Info">ℹ️</button>
+  <div id="choropleth-legend" class="custom-map-overlay"></div>
 
-  <!-- Legend Panel -->
+  <button id="info-button" title="Info">ℹ️</button>
+
   <div id="legend-panel">
     <div id="legend-handle"></div>
     <div class="legend-header">
-      <button id="reset-legend">Reset</button>
-        <button id="legend-toggle" title="Collapse Legend">Hide</button>
+      <button id="reset-legend">Reset View</button>
+      <button id="legend-toggle" title="Collapse Legend">Hide</button>
     </div>
 
     <div id="address-search">
-   <label for="org-directory">Search the directory:</label>
-<input type="text" id="search-input" placeholder="Search by name or tag..." style="width: 100%; padding: 6px;" />
-<div id="search-results" style="margin-top: 10px;"></div>
-
-
+      <label for="search-input">Search the directory:</label>
+      <input type="text" id="search-input" placeholder="Search by name or tag..." />
+      <div id="search-results" style="margin-top: 10px;"></div>
     </div>
+
     <div id="legend-wrapper">
       <div id="legend-content">
+        <div id="layer-toggles" style="margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px;"></div>
         <div id="legend"></div>
       </div>
     </div>
   </div>
 
-  <!-- Scripts -->
   <script src="script.js"></script>
-  <!-- jQuery + Select2 JS -->
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
-
 </body>
 </html>
