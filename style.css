@@ -15,6 +15,179 @@ body, html {
   z-index: 1;
 }
 
+#map {
+  margin-top: 80px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  z-index: 1;
+}
+
+/* Splash/Intro Box Alignment fixes */
+#intro-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(255, 255, 255, 0.95);
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.intro-content {
+  background: white;
+  max-width: 550px;
+  width: 100%;
+  padding: 25px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Sidebar Panel Setup */
+#legend-panel {
+  position: absolute;
+  top: 110px;
+  left: 10px;
+  z-index: 10;
+  width: 320px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#legend-panel.collapsed #legend-wrapper,
+#legend-panel.collapsed #address-search {
+  max-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#legend-wrapper {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.legend-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.legend-header button {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#address-search {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* Instant Query Autocomplete Suggestion List Dropdown Box Layout */
+#search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 999;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+.search-suggestion-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+  text-align: left;
+  background: #ffffff;
+}
+
+.search-suggestion-item:hover {
+  background-color: #f5f5f5;
+}
+
+/* Interactive Neighborhood Legend List Rows Structure */
+.neighborhood-legend-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #f9f9f9;
+  font-size: 13px;
+}
+
+.neighborhood-checkbox {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.neighborhood-color-swatch {
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  border: 1px solid #777;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.neighborhood-text-link {
+  cursor: pointer;
+  flex-grow: 1;
+}
+
+.neighborhood-text-link:hover {
+  text-decoration: underline;
+  color: #007bff;
+}
+
+#info-button {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+#map-guide-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 20000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 /* Intro Overlay */
 #intro-overlay {
   position: fixed;
@@ -507,6 +680,7 @@ background: none;
   z-index: 10;
   font-family: Arial, Helvetica, sans-serif;
   max-width: 200px;
+  pointer-events: auto;
 }
 
 .custom-map-overlay h4 {
@@ -530,68 +704,6 @@ background: none;
   margin-right: 8px;
   border: 1px solid rgba(0,0,0,0.15);
   border-radius: 2px;
-}
-
-/* Autocomplete Suggestion Box Fixes */
-#search-results {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: white;
-  border: 1px solid #ccc;
-  border-top: none;
-  border-radius: 0 0 4px 4px;
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 99;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-
-.search-suggestion-item {
-  padding: 8px 12px;
-  cursor: pointer;
-  border-bottom: 1px solid #eee;
-  font-size: 13px;
-  text-align: left;
-}
-
-.search-suggestion-item:last-child {
-  border-bottom: none;
-}
-
-.search-suggestion-item:hover {
-  background-color: #f0f0f0;
-}
-
-/* Legend items checklist alignment */
-.legend-category {
-  margin-bottom: 12px;
-  border-bottom: 1px solid #f0f0f0;
-  padding-bottom: 8px;
-}
-
-.legend-category-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: bold;
-  font-size: 14px;
-  margin: 4px 0;
-}
-
-.legend-org-list {
-  list-style: none;
-  padding-left: 20px;
-  margin: 4px 0;
-}
-
-.legend-org-list li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-  font-size: 13px;
 }
 
 /* Layer Checklist Section styling */

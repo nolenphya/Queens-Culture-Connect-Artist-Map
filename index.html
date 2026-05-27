@@ -13,7 +13,6 @@
 
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
 
   <header id="site-header">
@@ -30,7 +29,7 @@
         In 2024, Flushing Town Hall was invited by the New York State Council on the Arts (NYSCA) to lead The Queens Cultural Mapping Initiative, designed to document the rich and diverse artistic landscape of Queens.
       </p>
       <div style="display: inline-block;">
-        <button id="close-intro" style="background-color: black; color: white; cursor: pointer; padding: 10px 20px;">Explore the Map</button>
+        <button id="close-intro" style="background-color: black; color: white; cursor: pointer; padding: 10px 20px; border: none; border-radius: 4px;">Explore the Map</button>
       </div>
     </div>
   </div>
@@ -39,16 +38,14 @@
     <div class="intro-content">
       <h3>How to use the map</h3>
       <ul>
-        <li>🔍 <b>Explore Queens:</b> Zoom in to find organizations and view neighborhood metrics.</li>
-        <li>🚇 <b>Transit Access:</b> Click any subway station point at close zoom levels to view lines passing through.</li>
+        <li>🔍 <b>Explore Queens:</b> Zoom into neighborhoods to see cultural pins and toggle boundaries via the legend checkboxes.</li>
+        <li>🚇 <b>Transit Network:</b> Zoom past level 14 to see subway station labels. Click any station dot to view incoming routes.</li>
       </ul>
-      <button id="map-guide-close" style="background-color: black; color: white; cursor: pointer; padding: 8px 16px;">Got it</button>
+      <button id="map-guide-close" style="background-color: black; color: white; cursor: pointer; padding: 8px 16px; border: none; border-radius: 4px;">Got it</button>
     </div>
   </div>
 
   <div id="map"></div>
-
-  <div id="choropleth-legend" class="custom-map-overlay"></div>
 
   <button id="info-button" title="Info">ℹ️</button>
 
@@ -61,8 +58,8 @@
 
     <div id="address-search">
       <label for="search-input">Search the directory:</label>
-      <div style="position: relative; width: 100%;">
-        <input type="text" id="search-input" placeholder="Search by name or tag..." autocomplete="off" style="width: 100%; padding: 8px; box-sizing: border-box;" />
+      <div style="position: relative; width: 100%; margin-top: 5px;">
+        <input type="text" id="search-input" placeholder="Search by name, category, or tag..." autocomplete="off" style="width: 100%; padding: 8px; box-sizing: border-box;" />
         <div id="search-results"></div>
       </div>
     </div>
@@ -74,6 +71,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
