@@ -507,7 +507,6 @@ background: none;
   z-index: 10;
   font-family: Arial, Helvetica, sans-serif;
   max-width: 200px;
-  pointer-events: auto;
 }
 
 .custom-map-overlay h4 {
@@ -531,6 +530,68 @@ background: none;
   margin-right: 8px;
   border: 1px solid rgba(0,0,0,0.15);
   border-radius: 2px;
+}
+
+/* Autocomplete Suggestion Box Fixes */
+#search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 99;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.search-suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+  text-align: left;
+}
+
+.search-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.search-suggestion-item:hover {
+  background-color: #f0f0f0;
+}
+
+/* Legend items checklist alignment */
+.legend-category {
+  margin-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 8px;
+}
+
+.legend-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: bold;
+  font-size: 14px;
+  margin: 4px 0;
+}
+
+.legend-org-list {
+  list-style: none;
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.legend-org-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 13px;
 }
 
 /* Layer Checklist Section styling */

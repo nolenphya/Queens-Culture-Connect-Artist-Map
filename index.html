@@ -16,12 +16,12 @@
 
 <body>
 
-<header id="site-header">
-  <div class="header-left">
-    <img src="fthlogo.png" alt="Flushing Town Hall Logo" id="fth-logo">
-    <h1>The Queens Arts and Culture Map</h1>
-  </div>
-</header>
+  <header id="site-header">
+    <div class="header-left">
+      <img src="fthlogo.png" alt="Flushing Town Hall Logo" id="fth-logo">
+      <h1>The Queens Arts and Culture Map</h1>
+    </div>
+  </header>
 
   <div id="intro-overlay">
     <div class="intro-content">
@@ -30,11 +30,19 @@
         In 2024, Flushing Town Hall was invited by the New York State Council on the Arts (NYSCA) to lead The Queens Cultural Mapping Initiative, designed to document the rich and diverse artistic landscape of Queens.
       </p>
       <div style="display: inline-block;">
-        <a href="https://airtable.com/apppBx0a9hj0Z1ciw/pagkf63IaBt2wJvFo/form" target="_blank">
-          <button id="add-info" style="background-color: black; color: white;">Join the Map</button>
-        </a>
-        <button id="close-intro" style="background-color: black; color: white;">Explore the Map</button>
+        <button id="close-intro" style="background-color: black; color: white; cursor: pointer; padding: 10px 20px;">Explore the Map</button>
       </div>
+    </div>
+  </div>
+
+  <div id="map-guide-overlay" style="display:none;">
+    <div class="intro-content">
+      <h3>How to use the map</h3>
+      <ul>
+        <li>🔍 <b>Explore Queens:</b> Zoom in to find organizations and view neighborhood metrics.</li>
+        <li>🚇 <b>Transit Access:</b> Click any subway station point at close zoom levels to view lines passing through.</li>
+      </ul>
+      <button id="map-guide-close" style="background-color: black; color: white; cursor: pointer; padding: 8px 16px;">Got it</button>
     </div>
   </div>
 
@@ -53,13 +61,14 @@
 
     <div id="address-search">
       <label for="search-input">Search the directory:</label>
-      <input type="text" id="search-input" placeholder="Search by name or tag..." />
-      <div id="search-results" style="margin-top: 10px;"></div>
+      <div style="position: relative; width: 100%;">
+        <input type="text" id="search-input" placeholder="Search by name or tag..." autocomplete="off" style="width: 100%; padding: 8px; box-sizing: border-box;" />
+        <div id="search-results"></div>
+      </div>
     </div>
 
     <div id="legend-wrapper">
       <div id="legend-content">
-        <div id="layer-toggles" style="margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px;"></div>
         <div id="legend"></div>
       </div>
     </div>
