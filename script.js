@@ -68,7 +68,7 @@ map.on('load', async () => {
   const records = await fetchData();
   const data = records.map(r => ({ id: r.id, ...r.fields }));
   
-  geoData = await fetch('2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson').then(res => res.json());
+  geoData = await fetch('queens_neighborhoods.geojson').then(res => res.json());
 
   map.addSource('neighborhoods', { type: 'geojson', data: geoData });
 
