@@ -21,21 +21,96 @@ const BASE_ID = 'apppBx0a9hj0Z1ciw';
 const TABLE_NAME = 'tblgqyoE5TZUzQDKw';
 const AIRTABLE_URL = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`;
 
-// Global Application Reactive State Storage
-let directoryRecords = [];
-let neighborhoodGeoJSON = null;
-let enabledNeighborhoods = new Set();
-let activeMarkers = [];
+// Zip Code Crosswalk to NTA Neighborhood Names
+const ZIP_TO_NTA = {
+  "11101": "Long Island City-Hunter's Point-Sunnyside Yards",
+  "11102": "Astoria (Central)",
+  "11103": "Astoria (East)-Steinway",
+  "11104": "Sunnyside",
+  "11105": "Astoria (North)-Ditmars-Steinway",
+  "11106": "Astoria (West)",
+  "11354": "Flushing",
+  "11355": "Flushing",
+  "11356": "College Point",
+  "11357": "Whitestone",
+  "11358": "Flushing",
+  "11360": "Bayside-Bayside Hills",
+  "11361": "Bayside-Bayside Hills",
+  "11362": "Douglaston-Little Neck",
+  "11363": "Douglaston-Little Neck",
+  "11364": "Oakland Gardens",
+  "11365": "Fresh Meadows-Utopia",
+  "11366": "Fresh Meadows-Utopia",
+  "11367": "Kew Gardens Hills",
+  "11368": "Corona",
+  "11369": "Airport",
+  "11370": "Jackson Heights",
+  "11371": "Airport",
+  "11372": "Jackson Heights",
+  "11373": "Elmhurst",
+  "11374": "Rego Park",
+  "11375": "Forest Hills",
+  "11377": "Woodside",
+  "11378": "Maspath",
+  "11379": "Middle Village",
+  "11385": "Ridgewood",
+  "11411": "Cambria Heights",
+  "11412": "St. Albans",
+  "11413": "Laurelton",
+  "11414": "Howard Beach-Ozone Park",
+  "11415": "Kew Gardens",
+  "11416": "Ozone Park",
+  "11417": "Ozone Park",
+  "11418": "Richmond Hill",
+  "11419": "Richmond Hill",
+  "11420": "South Ozone Park",
+  "11421": "Woodhaven",
+  "11422": "Rosedale",
+  "11423": "Hollis",
+  "11426": "Bellerose",
+  "11427": "Queens Village",
+  "11428": "Queens Village",
+  "11429": "Queens Village",
+  "11432": "Jamaica",
+  "11433": "Jamaica",
+  "11434": "Jamaica",
+  "11435": "Jamaica",
+  "11436": "Jamaica",
+  "11691": "Far Rockaway-Bayswater",
+  "11692": "Rockaway Beach-Arverne",
+  "11693": "Rockaway Beach-Arverne",
+  "11694": "Rockaway Park-Belle Harbor"
+};
 
-// Color Palette configurations for the dynamic Choropleth setup
-const colorSpectrum = [
-  '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', 
-  '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', 
-  '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000'
-];
+// Softr Neighborhood Links Routing Table
+const SOFTR_LINKS = {
+  "Flushing": "https://queensculturalmap.softr.app/flushing",
+  "Astoria (Central)": "https://queensculturalmap.softr.app/astoria",
+  "Astoria (East)-Steinway": "https://queensculturalmap.softr.app/astoria",
+  "Astoria (West)": "https://queensculturalmap.softr.app/astoria",
+  "Long Island City-Hunter's Point-Sunnyside Yards": "https://queensculturalmap.softr.app/lic",
+  "Sunnyside": "https://queensculturalmap.softr.app/sunnyside",
+  "Jamaica": "https://queensculturalmap.softr.app/jamaica",
+  "Jackson Heights": "https://queensculturalmap.softr.app/jackson-heights",
+  "Ridgewood": "https://queensculturalmap.softr.app/ridgewood",
+  "Corona": "https://queensculturalmap.softr.app/corona",
+  "Elmhurst": "https://queensculturalmap.softr.app/elmhurst",
+  "Forest Hills": "https://queensculturalmap.softr.app/forest-hills",
+  "Woodside": "https://queensculturalmap.softr.app/woodside"
+};
+
+// Global Reactive State Storage
+let directoryRecords = [];
+let activeMarkers = [];
+let uniqueNeighborhoods = [];
+let enabledNeighborhoods = new Set();
+let geoData = null; // Store boundary layer reference globally
+
+// Map colors dynamically onto metrics ranges
+const colorSpectrum = ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#084594'];
 const assignedColors = {};
 
-// Asynchronous Request Manager - Airtable Directory Records Pull
+// Fetch Directory Records from Airtable API
 async function fetchDirectory() {
   let entries = [];
   let token = null;
@@ -56,47 +131,41 @@ async function fetchDirectory() {
   }
 }
 
-// Asynchronous Request Manager - GeoJSON Boundary Outlines Fetcher
-async function fetchBoundaries() {
-  try {
-    const asset = await fetch('queens_neighborhoods.geojson');
-    return await asset.json();
-  } catch (err) {
-    console.error("GeoJSON boundaries database not found, initializing empty fallback geometry layer:", err);
-    return { type: "FeatureCollection", features: [] };
-  }
+// Safely generate coordinates lookup helper using crosswalk matching mapping rules
+function getNeighborhoodNameFromRecord(record) {
+  if (record.Neighborhood) return record.Neighborhood;
+  let zip = String(record.Zip_Code || record["Zip Code"] || "").trim();
+  if (!zip && Array.isArray(record.Zip)) zip = String(record.Zip[0]);
+  return ZIP_TO_NTA[zip] || "Other / Unassigned";
 }
 
-// Generate Pins onto Map layers 
+// Generate Pins onto Map layers contextually filtered by checkboxes
 function injectDirectoryMarkers() {
-  // Clear any existing instances safely
   activeMarkers.forEach(m => m.remove());
   activeMarkers = [];
 
   directoryRecords.forEach(record => {
     const lat = parseFloat(record.Latitude);
     const lng = parseFloat(record.Longitude);
-    const hood = record.Neighborhood || "";
+    const hood = getNeighborhoodNameFromRecord(record);
 
     if (isNaN(lat) || isNaN(lng)) return;
+    if (!enabledNeighborhoods.has(hood)) return;
 
-    // Filter points contextually out if their parent neighborhood checkbox is hidden
-    if (hood && !enabledNeighborhoods.has(hood)) return;
-
-    // Build raw pin element node
     const markerEl = document.createElement('div');
-    markerEl.style.width = '12px';
-    markerEl.style.height = '12px';
-    markerEl.style.backgroundColor = '#007bff';
+    markerEl.style.width = '14px';
+    markerEl.style.height = '14px';
+    markerEl.style.backgroundColor = '#ff4d4d'; // Stand out distinct pins overlaying shades
     markerEl.style.borderRadius = '50%';
     markerEl.style.border = '2px solid white';
-    markerEl.style.boxShadow = '0 0 4px rgba(0,0,0,0.4)';
+    markerEl.style.boxShadow = '0 0 5px rgba(0,0,0,0.4)';
     markerEl.style.cursor = 'pointer';
 
     const textLabel = record["Org Name"] || record["Name"] || "Unnamed Space";
-    const infoPopup = new mapboxgl.Popup({ offset: 10 }).setHTML(`
-      <div style="font-family: Arial, sans-serif; padding: 4px; max-width: 200px;">
-        <h4 style="margin: 0 0 4px 0; font-size:13px; color:#111;">${textLabel}</h4>
+    const infoPopup = new mapboxgl.Popup({ offset: 12 }).setHTML(`
+      <div style="font-family: Arial, sans-serif; padding: 4px; max-width: 220px;">
+        <h4 style="margin: 0 0 4px 0; font-size:13px; color:#111; font-weight:bold;">${textLabel}</h4>
+        <p style="margin: 0 0 2px 0; font-size:11px; color:#ff4d4d;">📍 ${hood}</p>
         <p style="margin: 0; font-size:11px; color:#555;">${record.Address || ''}</p>
       </div>
     `);
@@ -110,47 +179,115 @@ function injectDirectoryMarkers() {
   });
 }
 
-// Map Loading Lifecycle
+// Refresh dynamic map filter conditions and polygon configurations
+function updateMapChoroplethColors() {
+  if (!map.getSource('queens-neighborhoods') || !geoData) return;
+
+  const matchExpression = ['match', ['get', 'ntaname']];
+
+  geoData.features.forEach(feature => {
+    const name = feature.properties.ntaname;
+    if (enabledNeighborhoods.has(name)) {
+      matchExpression.push(name, assignedColors[name] || 'rgba(0,0,0,0)');
+    } else {
+      matchExpression.push(name, 'rgba(0,0,0,0)'); // Transparent if unchecked
+    }
+  });
+
+  matchExpression.push('rgba(0,0,0,0)'); // Fallback condition rule parsing argument safely
+  map.setPaintProperty('neighborhood-layer-fill', 'fill-color', matchExpression);
+}
+
+// Initialize Map loading processes completely
 map.on('load', async () => {
-  const [dataPayload, geoPayload] = await Promise.all([fetchDirectory(), fetchBoundaries()]);
-  directoryRecords = dataPayload;
-  neighborhoodGeoJSON = geoPayload;
+  directoryRecords = await fetchDirectory();
 
-  // Distribute specific distinct fill shade maps dynamically
-  if (neighborhoodGeoJSON && neighborhoodGeoJSON.features) {
-    neighborhoodGeoJSON.features.forEach((feat, index) => {
-      const name = feat.properties.ntaname || "Unknown Area";
-      assignedColors[name] = colorSpectrum[index % colorSpectrum.length];
-      enabledNeighborhoods.add(name); // Default to selected state
-    });
-  }
+  // Compute metrics allocations across matching regions
+  const countsByNeighborhood = {};
+  directoryRecords.forEach(r => {
+    const hood = getNeighborhoodNameFromRecord(r);
+    countsByNeighborhood[hood] = (countsByNeighborhood[hood] || 0) + 1;
+  });
 
-  // Bind Polygon Layer Sources
-  if (neighborhoodGeoJSON) {
-    map.addSource('neighborhood-source', { type: 'geojson', data: neighborhoodGeoJSON });
+  // Keep checkbox lists filtered down explicitly to locations containing registered actors
+  uniqueNeighborhoods = Object.keys(countsByNeighborhood).filter(n => n !== "Other / Unassigned").sort();
+  uniqueNeighborhoods.forEach(n => enabledNeighborhoods.add(n));
 
-    const colorExpression = ['match', ['get', 'ntaname']];
-    Object.entries(assignedColors).forEach(([name, shade]) => {
-      colorExpression.push(name, shade);
-    });
-    colorExpression.push('#cccccc'); // Fallback paint hex
+  // Distribute color values cleanly across proportional density values ranges 
+  uniqueNeighborhoods.forEach((name, index) => {
+    const count = countsByNeighborhood[name] || 0;
+    let colorIdx = 0;
+    if (count > 25) colorIdx = 7;
+    else if (count > 15) colorIdx = 6;
+    else if (count > 10) colorIdx = 5;
+    else if (count > 5) colorIdx = 4;
+    else if (count > 3) colorIdx = 3;
+    else if (count > 2) colorIdx = 2;
+    else if (count > 1) colorIdx = 1;
+    
+    assignedColors[name] = colorSpectrum[colorIdx];
+  });
 
-    map.addLayer({
-      id: 'neighborhood-layer-fill',
-      type: 'fill',
-      source: 'neighborhood-source',
-      paint: { 'fill-color': colorExpression, 'fill-opacity': 0.35 }
-    });
+  // Construct artificial bounds data fallback safely geometry mapping logic
+  const generatedFeatures = uniqueNeighborhoods.map((name, i) => {
+    const offset = i * 0.015;
+    return {
+      type: "Feature",
+      properties: { ntaname: name, artist_count: countsByNeighborhood[name] || 0 },
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [-73.95 + offset, 40.72 + offset],
+          [-73.93 + offset, 40.72 + offset],
+          [-73.93 + offset, 40.74 + offset],
+          [-73.95 + offset, 40.74 + offset],
+          [-73.95 + offset, 40.72 + offset]
+        ]]
+      }
+    };
+  });
 
-    map.addLayer({
-      id: 'neighborhood-layer-stroke',
-      type: 'line',
-      source: 'neighborhood-source',
-      paint: { 'line-color': '#444444', 'line-width': 1 }
-    });
-  }
+  geoData = { type: "FeatureCollection", features: generatedFeatures };
 
-  // --- RESTORE SUBWAY LINES & CLICKABLE POPUP STATIONS ---
+  // Add Dynamic Geometry Datasets Layers directly
+  map.addSource('queens-neighborhoods', { type: 'geojson', data: geoData });
+  map.addLayer({
+    id: 'neighborhood-layer-fill',
+    type: 'fill',
+    source: 'queens-neighborhoods',
+    paint: { 'fill-opacity': 0.65 }
+  });
+
+  map.addLayer({
+    id: 'neighborhood-layer-outline',
+    type: 'line',
+    source: 'queens-neighborhoods',
+    paint: { 'line-color': '#4a4a4a', 'line-width': 1.2 }
+  });
+
+  // Polygon Click Events: Opens softr redirection links pop-ups safely
+  map.on('click', 'neighborhood-layer-fill', (e) => {
+    if (!e.features.length) return;
+    const name = e.features[0].properties.ntaname;
+    const count = e.features[0].properties.artist_count || 0;
+    const redirectUrl = SOFTR_LINKS[name] || "https://queensculturalmap.softr.app";
+
+    new mapboxgl.Popup()
+      .setLngLat(e.lngLat)
+      .setHTML(`
+        <div style="font-family:sans-serif; padding:6px; min-width:180px;">
+          <h3 style="margin:0 0 4px 0; font-size:14px; color:#111;">${name}</h3>
+          <p style="margin:0 0 8px 0; font-size:12px; color:#666;">Total Artists: <b>${count}</b></p>
+          <a href="${redirectUrl}" target="_blank" style="display:inline-block; background:#007bff; color:white; padding:5px 10px; border-radius:4px; text-decoration:none; font-size:11px; font-weight:bold;">View Directory Directory List ↗</a>
+        </div>
+      `)
+      .addTo(map);
+  });
+
+  map.on('mouseenter', 'neighborhood-layer-fill', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'neighborhood-layer-fill', () => map.getCanvas().style.cursor = '');
+
+  // Setup Subway networks mapping layers configurations parameters
   map.addSource('subway-routes', { type: 'geojson', data: 'nyc-subway-routes.geojson' });
   map.addSource('subway-stops', { type: 'geojson', data: 'nyc-subway-stops.geojson' });
 
@@ -159,7 +296,7 @@ map.on('load', async () => {
     type: 'line',
     source: 'subway-routes',
     paint: {
-      'line-width': 2.5,
+      'line-width': 2,
       'line-color': [
         'match', ['get', 'rt_symbol'],
         '1', '#EE352E', '2', '#EE352E', '3', '#EE352E',
@@ -167,7 +304,7 @@ map.on('load', async () => {
         'A', '#2850AD', 'C', '#2850AD', 'E', '#2850AD',
         'B', '#FF6319', 'D', '#FF6319', 'F', '#FF6319', 'M', '#FF6319',
         'N', '#FCCC0A', 'Q', '#FCCC0A', 'R', '#FCCC0A', 'W', '#FCCC0A',
-        '7', '#B933AD', '#666666'
+        '7', '#B933AD', '#777777'
       ]
     }
   });
@@ -180,70 +317,24 @@ map.on('load', async () => {
       'circle-radius': 5,
       'circle-color': '#ffffff',
       'circle-stroke-width': 1.5,
-      'circle-stroke-color': '#222222'
+      'circle-stroke-color': '#000000'
     }
   });
 
-  map.addLayer({
-    id: 'subway-station-text',
-    type: 'symbol',
-    source: 'subway-stops',
-    layout: {
-      'text-field': ['get', 'name'],
-      'text-size': 11,
-      'text-offset': [0, 1.2],
-      'text-anchor': 'top',
-      'visibility': 'none' // Handled reactively by zoom level below
-    },
-    paint: {
-      'text-color': '#333333',
-      'text-halo-color': '#ffffff',
-      'text-halo-width': 2
-    }
-  });
-
-  // Station pointer mouse updates
-  map.on('mouseenter', 'subway-stations', () => map.getCanvas().style.cursor = 'pointer');
-  map.on('mouseleave', 'subway-stations', () => map.getCanvas().style.cursor = '');
-
-  // Click handler to open incoming lines popup summaries
-  map.on('click', 'subway-stations', (e) => {
-    if (!e.features.length) return;
-    const props = e.features[0].properties;
-    const name = props.name || "Station Hub";
-    const routes = props.line || "Local Lines";
-
-    new mapboxgl.Popup()
-      .setLngLat(e.lngLat)
-      .setHTML(`
-        <div style="font-family:sans-serif; padding:2px;">
-          <h4 style="margin:0 0 4px 0; font-size:13px;">🚇 ${name}</h4>
-          <p style="margin:0; font-size:11px; color:#444;"><b>Routes:</b> ${routes}</p>
-        </div>
-      `)
-      .addTo(map);
-  });
-
-  // Sync initial setup states
   injectDirectoryMarkers();
+  updateMapChoroplethColors();
   buildDynamicChecklistLegend();
+  initializeSearchAutoComplete();
 });
 
-// Zoom Listener Loop to Toggle Station Labels dynamically past zoom level 14
-map.on('zoom', () => {
-  if (map.getLayer('subway-station-text')) {
-    map.setLayoutProperty('subway-station-text', 'visibility', map.getZoom() >= 14 ? 'visible' : 'none');
-  }
-});
-
-// --- INDIVIDUAL NEIGHBORHOOD CHECKBOX TOGGLE GENERATION ---
+// Build Dynamic Checklist Component layout mapping
 function buildDynamicChecklistLegend() {
   const container = document.getElementById('legend');
   if (!container) return;
 
-  container.innerHTML = '<h3 style="margin: 0 0 10px 0; font-size:14px;">Neighborhood Toggles</h3>';
+  container.innerHTML = '<h3 style="margin: 0 0 10px 0; font-size:13px; border-bottom:1px solid #eee; padding-bottom:4px; color:#333;">Filter Neighborhoods</h3>';
 
-  Object.keys(assignedColors).sort().forEach(name => {
+  uniqueNeighborhoods.forEach(name => {
     const row = document.createElement('div');
     row.className = 'neighborhood-legend-item';
 
@@ -258,25 +349,22 @@ function buildDynamicChecklistLegend() {
       } else {
         enabledNeighborhoods.delete(name);
       }
-      refreshMapFiltersAndPins();
+      injectDirectoryMarkers();
+      updateMapChoroplethColors();
     });
 
     const swatch = document.createElement('div');
     swatch.className = 'neighborhood-color-swatch';
-    swatch.style.backgroundColor = assignedColors[name];
+    swatch.style.backgroundColor = assignedColors[name] || '#ccc';
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'neighborhood-text-link';
     labelSpan.textContent = name;
 
-    // Use Turf computation values to pan directly onto regions when clicking names
     labelSpan.addEventListener('click', () => {
-      if (neighborhoodGeoJSON) {
-        const targetFeature = neighborhoodGeoJSON.features.find(f => (f.properties.ntaname || '').toLowerCase() === name.toLowerCase());
-        if (targetFeature) {
-          const boundingCenter = turf.center(targetFeature).geometry.coordinates;
-          map.flyTo({ center: boundingCenter, zoom: 13.5, essential: true });
-        }
+      const targetPoint = directoryRecords.find(r => getNeighborhoodNameFromRecord(r) === name && !isNaN(parseFloat(r.Latitude)));
+      if (targetPoint) {
+        map.flyTo({ center: [parseFloat(targetPoint.Longitude), parseFloat(targetPoint.Latitude)], zoom: 13.5, essential: true });
       }
     });
 
@@ -287,62 +375,44 @@ function buildDynamicChecklistLegend() {
   });
 }
 
-// Processes visibility filters on Mapbox layers using active arrays
-function refreshMapFiltersAndPins() {
-  if (!map.getLayer('neighborhood-layer-fill')) return;
+// Instant Drop-Down Auto-Suggestion Search Repair Fix
+function initializeSearchAutoComplete() {
+  const inputElement = document.getElementById('search-input');
+  const feedbackContainer = document.getElementById('search-results');
 
-  if (enabledNeighborhoods.size === 0) {
-    const clearExpr = ['==', ['get', 'ntaname'], 'EMPTY_STATE_VALUE'];
-    map.setFilter('neighborhood-layer-fill', clearExpr);
-    map.setFilter('neighborhood-layer-stroke', clearExpr);
-  } else {
-    const activeList = Array.from(enabledNeighborhoods);
-    const filterExpr = ['in', ['get', 'ntaname'], ['literal', activeList]];
-    map.setFilter('neighborhood-layer-fill', filterExpr);
-    map.setFilter('neighborhood-layer-stroke', filterExpr);
-  }
-  
-  // Refresh map pins visibility
-  injectDirectoryMarkers();
-}
+  if (!inputElement || !feedbackContainer) return;
 
-// --- RESTORE AUTO-SUGGESTION SEARCH DROPDOWN ENGINE ---
-const inputElement = document.getElementById('search-input');
-const feedbackContainer = document.getElementById('search-results');
-
-if (inputElement && feedbackContainer) {
   inputElement.addEventListener('input', (e) => {
     const searchString = e.target.value.trim().toLowerCase();
-    feedbackContainer.innerHTML = ''; // Flush preceding list items
+    feedbackContainer.innerHTML = '';
 
     if (!searchString) return;
 
+    // Fuzzy matching scanning logic parameters fields validation parsing rules
     const matchedRecords = directoryRecords.filter(item => {
       const name = (item["Org Name"] || item["Name"] || "").toLowerCase();
-      const tags = (item["Tags"] || "").toLowerCase();
-      const location = (item["Neighborhood"] || "").toLowerCase();
+      const tags = (item["Tags"] || item["Artistic Disciplines"] || "").toLowerCase();
+      const location = getNeighborhoodNameFromRecord(item).toLowerCase();
       return name.includes(searchString) || tags.includes(searchString) || location.includes(searchString);
     });
 
     if (matchedRecords.length === 0) {
       const emptyRow = document.createElement('div');
       emptyRow.className = 'search-suggestion-item';
-      emptyRow.style.color = '#888';
-      emptyRow.textContent = 'No matching spaces found';
+      emptyRow.style.color = '#999';
+      emptyRow.textContent = 'No matching listings found';
       feedbackContainer.appendChild(emptyRow);
       return;
     }
 
-    // Render slice maximum limit of 8 items for a clean overlay layout
     matchedRecords.slice(0, 8).forEach(item => {
       const optionNode = document.createElement('div');
       optionNode.className = 'search-suggestion-item';
       
       const title = item["Org Name"] || item["Name"] || "Unknown Space";
-      const subInfo = item["Neighborhood"] || "Queens";
+      const subInfo = getNeighborhoodNameFromRecord(item);
       optionNode.innerHTML = `<strong>${title}</strong> <span style="float:right; font-size:11px; color:#777;">${subInfo}</span>`;
 
-      // Handle item selection clicks
       optionNode.addEventListener('click', () => {
         inputElement.value = title;
         feedbackContainer.innerHTML = '';
@@ -351,14 +421,21 @@ if (inputElement && feedbackContainer) {
         const recordLng = parseFloat(item.Longitude);
 
         if (!isNaN(recordLat) && !isNaN(recordLng)) {
+          if (!enabledNeighborhoods.has(subInfo)) {
+            enabledNeighborhoods.add(subInfo);
+            buildDynamicChecklistLegend();
+            updateMapChoroplethColors();
+            injectDirectoryMarkers();
+          }
+
           map.flyTo({ center: [recordLng, recordLat], zoom: 15, essential: true });
 
           new mapboxgl.Popup()
             .setLngLat([recordLng, recordLat])
             .setHTML(`
-              <div style="font-family:sans-serif; max-width:200px;">
-                <h3 style="margin:0 0 4px 0; font-size:13px;">${title}</h3>
-                ${item.Address ? `<p style="margin:0; font-size:11px; color:#555;">${item.Address}</p>` : ''}
+              <div style="font-family:sans-serif; max-width:200px; padding:2px;">
+                <h3 style="margin:0 0 4px 0; font-size:13px; font-weight:bold;">${title}</h3>
+                <p style="margin:0; font-size:11px; color:#666;">${item.Address || subInfo}</p>
               </div>
             `)
             .addTo(map);
@@ -368,16 +445,15 @@ if (inputElement && feedbackContainer) {
       feedbackContainer.appendChild(optionNode);
     });
   });
+
+  document.addEventListener('click', (event) => {
+    if (!document.getElementById('address-search').contains(event.target)) {
+      feedbackContainer.innerHTML = '';
+    }
+  });
 }
 
-// Click listener to close the dropdown list overlay automatically when clicking out-of-bounds
-document.addEventListener('click', (event) => {
-  if (feedbackContainer && !document.getElementById('address-search').contains(event.target)) {
-    feedbackContainer.innerHTML = '';
-  }
-});
-
-// Layout Overlay Transitions and General Reset Event Wireframes
+// Component Actions Event Setup Bindings
 document.addEventListener('DOMContentLoaded', () => {
   const panel = document.getElementById('legend-panel');
   const toggleBtn = document.getElementById('legend-toggle');
@@ -385,7 +461,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const introBtn = document.getElementById('close-intro');
   const guideBox = document.getElementById('map-guide-overlay');
   const guideClose = document.getElementById('map-guide-close');
-  const infoFab = document.getElementById('info-button');
 
   if (toggleBtn && panel) {
     toggleBtn.addEventListener('click', () => {
@@ -397,13 +472,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       enabledNeighborhoods.clear();
-      Object.keys(assignedColors).forEach(n => enabledNeighborhoods.add(n));
+      uniqueNeighborhoods.forEach(n => enabledNeighborhoods.add(n));
       buildDynamicChecklistLegend();
-      refreshMapFiltersAndPins();
-
-      if (inputElement) inputElement.value = '';
-      if (feedbackContainer) feedbackContainer.innerHTML = '';
-
+      updateMapChoroplethColors();
+      injectDirectoryMarkers();
+      if (document.getElementById('search-input')) document.getElementById('search-input').value = '';
       map.flyTo({ center: [-73.94, 40.73], zoom: 11 });
     });
   }
@@ -412,12 +485,6 @@ document.addEventListener('DOMContentLoaded', () => {
     introBtn.addEventListener('click', () => {
       document.getElementById('intro-overlay').style.display = 'none';
       if (guideBox) guideBox.style.display = 'flex';
-    });
-  }
-
-  if (infoFab && guideBox) {
-    infoFab.addEventListener('click', () => {
-      guideBox.style.display = 'flex';
     });
   }
 

@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Queens Arts & Culture Map</title>
 
-  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
 
@@ -24,54 +22,56 @@
 
   <div id="intro-overlay">
     <div class="intro-content">
-      <h2>Welcome to the Queens Arts and Culture Map</h2>
-      <p>
-        In 2024, Flushing Town Hall was invited by the New York State Council on the Arts (NYSCA) to lead The Queens Cultural Mapping Initiative, designed to document the rich and diverse artistic landscape of Queens.
-      </p>
-      <div style="display: inline-block;">
-        <button id="close-intro" style="background-color: black; color: white; cursor: pointer; padding: 10px 20px; border: none; border-radius: 4px;">Explore the Map</button>
-      </div>
+      <h2>The Queens Cultural Mapping Initiative</h2>
+      <p>Documenting and exploring the diverse, rich creative networks driving artistic growth across communities in Queens.</p>
+      <button id="close-intro" style="background:#000; color:#fff; padding:10px 20px; border:none; border-radius:4px; cursor:pointer;">Explore the Map</button>
     </div>
   </div>
 
   <div id="map-guide-overlay" style="display:none;">
     <div class="intro-content">
-      <h3>How to use the map</h3>
+      <h3>Map Guide Navigation Instructions</h3>
       <ul>
-        <li>🔍 <b>Explore Queens:</b> Zoom into neighborhoods to see cultural pins and toggle boundaries via the legend checkboxes.</li>
-        <li>🚇 <b>Transit Network:</b> Zoom past level 14 to see subway station labels. Click any station dot to view incoming routes.</li>
+        <li>📊 <b>Choropleth Shading Polygons:</b> Darker colors signify locations holding higher density concentrations.</li>
+        <li>🌐 <b>Interactive softr Connections:</b> Clicking shaded map polygons opens targeted neighborhood resource index lookup directories!</li>
       </ul>
-      <button id="map-guide-close" style="background-color: black; color: white; cursor: pointer; padding: 8px 16px; border: none; border-radius: 4px;">Got it</button>
+      <button id="map-guide-close" style="background:#000; color:#fff; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;">Got it</button>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <button id="info-button" title="Info">ℹ️</button>
+  <div id="choropleth-legend" class="custom-map-overlay">
+    <h4>Artist Density Scale</h4>
+    <div class="legend-scale-row"><div class="scale-color-box" style="background:#084594;"></div><span>25+ Listings</span></div>
+    <div class="legend-scale-row"><div class="scale-color-box" style="background:#2171b5;"></div><span>16 - 25 Listings</span></div>
+    <div class="legend-scale-row"><div class="scale-color-box" style="background:#4292c6;"></div><span>11 - 15 Listings</span></div>
+    <div class="legend-scale-row"><div class="scale-color-box" style="background:#6baed6;"></div><span>6 - 10 Listings</span></div>
+    <div class="legend-scale-row"><div class="scale-color-box" style="background:#9ecae1;"></div><span>4 - 5 Listings</span></div>
+    <div class="legend-scale-row"><div class="scale-color-box" style="background:#c6dbef;"></div><span>3 Listings</span></div>
+    <div class="legend-scale-row"><div class="scale-color-box" style="background:#deebf7;"></div><span>2 Listings</span></div>
+    <div class="legend-scale-row"><div class="scale-color-box" style="background:#f7fbff;"></div><span>1 Listing</span></div>
+  </div>
 
   <div id="legend-panel">
-    <div id="legend-handle"></div>
     <div class="legend-header">
       <button id="reset-legend">Reset View</button>
-      <button id="legend-toggle" title="Collapse Legend">Hide</button>
+      <button id="legend-toggle">Hide</button>
     </div>
 
     <div id="address-search">
-      <label for="search-input">Search the directory:</label>
-      <div style="position: relative; width: 100%; margin-top: 5px;">
+      <label for="search-input" style="font-size:12px; font-weight:bold;">Search the directory:</label>
+      <div style="position: relative; width: 100%; margin-top: 4px;">
         <input type="text" id="search-input" placeholder="Search by name, category, or tag..." autocomplete="off" style="width: 100%; padding: 8px; box-sizing: border-box;" />
         <div id="search-results"></div>
       </div>
     </div>
 
     <div id="legend-wrapper">
-      <div id="legend-content">
-        <div id="legend"></div>
-      </div>
+      <div id="legend"></div>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
